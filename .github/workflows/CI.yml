@@ -43,7 +43,7 @@ jobs:
           python-version: 3.x
       - name: Install prerequisites
         run: |
-          sudo apt install fontconfig-devel
+          sudo apt install libfontconfig-dev
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -77,7 +77,7 @@ jobs:
           python-version: 3.x
       - name: Install prerequisites
         run: |
-          sudo apt install fontconfig-devel
+          sudo apt install libfontconfig-dev
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:

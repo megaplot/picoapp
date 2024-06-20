@@ -4,7 +4,7 @@ import picoapp
 from picoapp import Inputs, IntSlider, Outputs, Plot, Slider
 
 
-def main():
+def main() -> None:
 
     elements = [
         (master_slider := IntSlider("Number of sliders", 1, 5, 10)),
