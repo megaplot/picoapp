@@ -54,7 +54,7 @@ jobs:
       - name: "Install native package"
         run: |
           . env.sh
-          maturin develop
+          maturin develop --uv
 
       - name: "Python: Check types"
         run: |
