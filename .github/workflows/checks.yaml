@@ -33,7 +33,7 @@ jobs:
       - name: "Rust: Install toolchain"
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: stable
 
       - name: "Rust: Tests"
         run: |
