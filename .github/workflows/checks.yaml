@@ -13,7 +13,7 @@ on:
 
 jobs:
 
-  tests:
+  checks:
 
     runs-on: ubuntu-22.04
     strategy:
