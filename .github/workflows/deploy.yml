@@ -52,7 +52,20 @@ jobs:
           sccache: 'true'
           manylinux: auto
           # container: off
-          before-script-linux: apt-get -y install fontconfig libfontconfig-dev libfontconfig1-dev
+          # before-script-linux: apt-get -y install fontconfig libfontconfig-dev libfontconfig1-dev
+          before-script-linux: |
+            case "${{ matrix.target }}" in
+              "aarch64" | "armv7" | "s390x" | "ppc64le")
+                # NOTE: pypa/manylinux docker images are Debian based
+                sudo apt-get update
+                sudo apt-get install -y fontconfig libfontconfig-dev libfontconfig1-dev
+                ;;
+              "x86" | "x86_64")
+                # NOTE: rust-cross/manylinux docker images are CentOS based
+                yum update -y
+                yum install -y fontconfig libfontconfig-dev libfontconfig1-dev
+                ;;
+            esac
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -88,7 +101,20 @@ jobs:
           sccache: 'true'
           manylinux: musllinux_1_2
           # container: off
-          before-script-linux: apt-get -y install fontconfig libfontconfig-dev libfontconfig1-dev
+          # before-script-linux: apt-get -y install fontconfig libfontconfig-dev libfontconfig1-dev
+          before-script-linux: |
+            case "${{ matrix.target }}" in
+              "aarch64" | "armv7" | "s390x" | "ppc64le")
+                # NOTE: pypa/manylinux docker images are Debian based
+                sudo apt-get update
+                sudo apt-get install -y fontconfig libfontconfig-dev libfontconfig1-dev
+                ;;
+              "x86" | "x86_64")
+                # NOTE: rust-cross/manylinux docker images are CentOS based
+                yum update -y
+                yum install -y fontconfig libfontconfig-dev libfontconfig1-dev
+                ;;
+            esac
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
