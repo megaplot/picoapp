@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -e
+
+# Unfortunately it looks like we cannot control the (inner) name of the pipeline,
+# therefore keeping the filename `CI.yml` for consistency.
+maturin generate-ci github > .github/workflows/CI.yml
