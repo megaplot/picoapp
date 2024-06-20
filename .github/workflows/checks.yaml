@@ -45,34 +45,35 @@ jobs:
 
       - name: "Python: Install dependencies"
         run: |
+          . env.sh
           ./scripts/venv_create
-          . ./venv/bin/activate
+          . env.sh
           uv pip install -r requirements_dev.in -r requirements.in
           uv pip freeze
 
       - name: "Install native package"
         run: |
-          . ./venv/bin/activate
+          . env.sh
           maturin develop
 
       - name: "Python: Check types"
         run: |
-          . ./venv/bin/activate
+          . env.sh
           mypy .
 
       - name: "Python: Check linter"
         run: |
-          . ./venv/bin/activate
+          . env.sh
           flake8
 
       - name: "Python: Check format"
         run: |
-          . ./venv/bin/activate
+          . env.sh
           black --check .
           isort --check .
 
       - name: "Python: Tests"
         run: |
-          . ./venv/bin/activate
+          . env.sh
           pytest
 

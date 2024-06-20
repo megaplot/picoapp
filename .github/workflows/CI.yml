@@ -51,7 +51,8 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: auto
-          container: off
+          # container: off
+          before-script-linux: sudo apt install fontconfig libfontconfig-dev libfontconfig1-dev
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -86,7 +87,8 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: musllinux_1_2
-          container: off
+          # container: off
+          before-script-linux: sudo apt install fontconfig libfontconfig-dev libfontconfig1-dev
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
