@@ -1,7 +1,7 @@
 import numpy as np
 
-import simple_app
-from simple_app import Inputs, IntSlider, Outputs, Plot, Slider
+import picoapp
+from picoapp import Inputs, IntSlider, Outputs, Plot, Slider
 
 
 def main():
@@ -30,7 +30,7 @@ def main():
 
         return Inputs(*sliders, callback=callback_2)
 
-    simple_app.run(elements, callback_1)
+    picoapp.run(elements, callback_1)
 
 
 if __name__ == "__main__":

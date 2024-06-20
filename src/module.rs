@@ -12,7 +12,7 @@ fn run(inputs: &Bound<'_, PyList>, callback: &Bound<'_, PyFunction>) -> PyResult
 }
 
 #[pymodule]
-fn _simple_app(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _picoapp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)?;
     Ok(())
 }

@@ -1,7 +1,7 @@
 import numpy as np
 
-import simple_app
-from simple_app import Outputs, Plot, Slider
+import picoapp
+from picoapp import Outputs, Plot, Slider
 
 elements = [
     (slider_a := Slider("a", -10.0, 0.5, 10.0)),
@@ -22,4 +22,4 @@ def callback() -> Outputs:
     )
 
 
-simple_app.run(elements, callback)
+picoapp.run(elements, callback)

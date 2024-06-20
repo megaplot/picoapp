@@ -1,8 +1,8 @@
 from typing import Sequence
 
-from . import _simple_app
+from . import _picoapp
 from .types import Callback, Input
 
 
 def run(inputs: Sequence[Input], callback: Callback):
-    _simple_app.run(inputs, callback)
+    _picoapp.run(inputs, callback)
