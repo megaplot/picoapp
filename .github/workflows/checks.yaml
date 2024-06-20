@@ -39,31 +39,40 @@ jobs:
         run: |
           cargo test
 
-      - name: "Python: Install dependencies"
-        # TODO: Should CI be based on `uv` as well?
+      - name: "Install uv"
         run: |
-          pip install -U pip
-          pip install -r requirements_dev.in -r requirements.in
-          pip freeze
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: "Python: Install dependencies"
+        run: |
+          ./scripts/venv_create
+          . ./venv/bin/activate
+          uv pip install -r requirements_dev.in -r requirements.in
+          uv pip freeze
 
       - name: "Install native package"
         run: |
+          . ./venv/bin/activate
           maturin develop
 
       - name: "Python: Check types"
         run: |
+          . ./venv/bin/activate
           mypy .
 
       - name: "Python: Check linter"
         run: |
+          . ./venv/bin/activate
           flake8
 
       - name: "Python: Check format"
         run: |
+          . ./venv/bin/activate
           black --check .
           isort --check .
 
       - name: "Python: Tests"
         run: |
+          . ./venv/bin/activate
           pytest
 
