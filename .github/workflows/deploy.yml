@@ -41,9 +41,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: Install prerequisites
-        run: |
-          sudo apt install fontconfig libfontconfig-dev libfontconfig1-dev
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -75,9 +72,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: Install prerequisites
-        run: |
-          sudo apt install fontconfig libfontconfig-dev libfontconfig1-dev
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
