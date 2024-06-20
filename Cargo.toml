@@ -12,8 +12,13 @@ crate-type = ["cdylib"]
 
 cushy = { version = "0.3", features = ["plotters"] }
 kludgine = "0.8.0"
-plotters = "0.3.6"
+plotters = { version = "0.3.6", features = ["fontconfig-dlopen"] }
 pyo3 = "0.21.1"
+
+# Note: fontconfig-dlopen should lead to forwarding of feature flag chain:
+# - https://docs.rs/crate/plotters/latest/features
+# - https://docs.rs/crate/font-kit/latest/features
+# - https://docs.rs/fontconfig/latest/fontconfig/
 
 # https://github.com/khonsulabs/cushy/discussions/148
 [profile.dev.package."*"]
