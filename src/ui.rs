@@ -1,3 +1,6 @@
+use cushy::figures::units::UPx;
+use cushy::figures::Size;
+use cushy::value::Dynamic;
 use cushy::widget::MakeWidget;
 use cushy::Run;
 use pyo3::exceptions::PyRuntimeError;
@@ -12,9 +15,13 @@ pub fn run_ui(sliders: &[Input], callback: &Bound<'_, PyFunction>) -> PyResult<(
     let callback = callback.clone().unbind();
 
     py.allow_threads(|| {
+        // For controlling initial window size see: https://github.com/khonsulabs/cushy/discussions/159
+        let inner_size = Dynamic::new(Size::new(UPx::new(1600), UPx::new(1000)));
+
         let window = Python::with_gil(|py| {
             input_widget(py, sliders, callback)
                 .into_window()
+                .inner_size(inner_size)
                 .titled("pico app")
         });
         let result = window.run();
