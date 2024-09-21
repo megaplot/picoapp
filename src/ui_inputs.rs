@@ -54,26 +54,23 @@ fn build_slider(
     let py_callback = py_callback.clone_ref(py);
     let cb_return_dynamic = cb_return_dynamic.clone();
 
-    // Temporary work-around for initial callback call.
-    // https://github.com/khonsulabs/cushy/issues/156#issuecomment-2152677089
-    let callback = move |value: &f64| {
-        let result = Python::with_gil(|py| -> PyResult<()> {
-            py_slider.setattr(py, "value", *value)?;
-
-            let cb_return = py_callback.call_bound(py, (), None)?;
-            let cb_return = parse_callback_return(py, cb_return)?;
-
-            cb_return_dynamic.set(Some(cb_return));
-            Ok(())
-        });
-        if let Err(e) = result {
-            println!("Error on calling callback: {}", e);
-        }
-    };
-
     let value = Dynamic::new(slider.init);
-    value.map_ref(&callback);
-    value.for_each(callback).persist();
+    value
+        .for_each(move |value: &f64| {
+            let result = Python::with_gil(|py| -> PyResult<()> {
+                py_slider.setattr(py, "value", *value)?;
+
+                let cb_return = py_callback.call_bound(py, (), None)?;
+                let cb_return = parse_callback_return(py, cb_return)?;
+
+                cb_return_dynamic.set(Some(cb_return));
+                Ok(())
+            });
+            if let Err(e) = result {
+                println!("Error on calling callback: {}", e);
+            }
+        })
+        .persist();
 
     let label_row = slider
         .name
@@ -96,26 +93,23 @@ fn build_int_slider(
     let py_callback = py_callback.clone_ref(py);
     let cb_return_dynamic = cb_return_dynamic.clone();
 
-    // Temporary work-around for initial callback call.
-    // https://github.com/khonsulabs/cushy/issues/156#issuecomment-2152677089
-    let callback = move |value: &i64| {
-        let result = Python::with_gil(|py| -> PyResult<()> {
-            py_slider.setattr(py, "value", *value)?;
-
-            let cb_return = py_callback.call_bound(py, (), None)?;
-            let cb_return = parse_callback_return(py, cb_return)?;
-
-            cb_return_dynamic.set(Some(cb_return));
-            Ok(())
-        });
-        if let Err(e) = result {
-            println!("Error on calling callback: {}", e);
-        }
-    };
-
     let value = Dynamic::new(slider.init);
-    value.map_ref(&callback);
-    value.for_each(callback).persist();
+    value
+        .for_each(move |value: &i64| {
+            let result = Python::with_gil(|py| -> PyResult<()> {
+                py_slider.setattr(py, "value", *value)?;
+
+                let cb_return = py_callback.call_bound(py, (), None)?;
+                let cb_return = parse_callback_return(py, cb_return)?;
+
+                cb_return_dynamic.set(Some(cb_return));
+                Ok(())
+            });
+            if let Err(e) = result {
+                println!("Error on calling callback: {}", e);
+            }
+        })
+        .persist();
 
     let label_row = slider
         .name
