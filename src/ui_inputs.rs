@@ -10,17 +10,17 @@ use pyo3::types::PyFunction;
 use crate::conversion::{parse_callback_return, CallbackReturn, Input, Slider};
 use crate::ui_plots::plots_widget;
 
-pub fn input_widget(inputs: &[Input], py_callback: Py<PyFunction>) -> impl MakeWidget {
+pub fn input_widget(py: Python, inputs: &[Input], py_callback: Py<PyFunction>) -> impl MakeWidget {
     let cb_return_dynamic: Dynamic<Option<CallbackReturn>> = Dynamic::new(None);
 
     // Build the sidebar
     let mut widget_list = WidgetList::new();
     for input in inputs.iter() {
         if let Input::Slider(slider) = input {
-            let control_widget = build_slider(slider, &py_callback, &cb_return_dynamic);
+            let control_widget = build_slider(py, slider, &py_callback, &cb_return_dynamic);
             widget_list = widget_list.and(control_widget);
         } else if let Input::IntSlider(slider) = input {
-            let control_widget = build_int_slider(slider, &py_callback, &cb_return_dynamic);
+            let control_widget = build_int_slider(py, slider, &py_callback, &cb_return_dynamic);
             widget_list = widget_list.and(control_widget);
         }
     }
@@ -28,27 +28,30 @@ pub fn input_widget(inputs: &[Input], py_callback: Py<PyFunction>) -> impl MakeW
 
     // Build the content
     let content = cb_return_dynamic.switcher(|cb_result, _active| {
-        let Some(cb_result) = cb_result else {
-            return Space::clear().make_widget();
-        };
-        match cb_result {
-            CallbackReturn::Outputs(plots) => plots_widget(plots.clone()).make_widget(),
-            CallbackReturn::Inputs(inputs, callback) => {
-                input_widget(&inputs, callback.clone()).make_widget()
+        Python::with_gil(|py| {
+            let Some(cb_result) = cb_result else {
+                return Space::clear().make_widget();
+            };
+            match cb_result {
+                CallbackReturn::Outputs(plots) => plots_widget(plots.clone()).make_widget(),
+                CallbackReturn::Inputs(inputs, callback) => {
+                    input_widget(py, &inputs, callback.clone_ref(py)).make_widget()
+                }
             }
-        }
+        })
     });
 
     sidebar.and(content.expand()).into_columns()
 }
 
 fn build_slider(
+    py: Python,
     slider: &Slider<f64>,
     py_callback: &Py<PyFunction>,
     cb_return_dynamic: &Dynamic<Option<CallbackReturn>>,
 ) -> impl Widget {
-    let py_slider = slider.py_slider.clone();
-    let py_callback = py_callback.clone();
+    let py_slider = slider.py_slider.clone_ref(py);
+    let py_callback = py_callback.clone_ref(py);
     let cb_return_dynamic = cb_return_dynamic.clone();
 
     // Temporary work-around for initial callback call.
@@ -84,12 +87,13 @@ fn build_slider(
 }
 
 fn build_int_slider(
+    py: Python,
     slider: &Slider<i64>,
     py_callback: &Py<PyFunction>,
     cb_return_dynamic: &Dynamic<Option<CallbackReturn>>,
 ) -> impl Widget {
-    let py_slider = slider.py_slider.clone();
-    let py_callback = py_callback.clone();
+    let py_slider = slider.py_slider.clone_ref(py);
+    let py_callback = py_callback.clone_ref(py);
     let cb_return_dynamic = cb_return_dynamic.clone();
 
     // Temporary work-around for initial callback call.

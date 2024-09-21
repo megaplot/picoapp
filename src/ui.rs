@@ -12,9 +12,11 @@ pub fn run_ui(sliders: &[Input], callback: &Bound<'_, PyFunction>) -> PyResult<(
     let callback = callback.clone().unbind();
 
     py.allow_threads(|| {
-        let window = input_widget(sliders, callback)
-            .into_window()
-            .titled("pico app");
+        let window = Python::with_gil(|py| {
+            input_widget(py, sliders, callback)
+                .into_window()
+                .titled("pico app")
+        });
         let result = window.run();
         result.map_err(|e| PyRuntimeError::new_err(format!("Failed to run widget: {}", e)))
     })
