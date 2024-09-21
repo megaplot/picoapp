@@ -2,6 +2,6 @@ black
 flake8
 isort
 ipython
-maturin
+maturin[patchelf]
 mypy
 pytest
