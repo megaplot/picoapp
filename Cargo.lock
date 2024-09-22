@@ -2254,8 +2254,10 @@ version = "0.1.0"
 dependencies = [
  "cushy",
  "kludgine 0.11.0",
+ "log",
  "plotters",
  "pyo3",
+ "tracing-subscriber",
 ]
 
 [[package]]
