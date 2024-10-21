@@ -10,7 +10,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 
-cushy = { version = "0.4", features = ["plotters"] }
+# cushy = { version = "0.4", features = ["plotters"] }
+cushy = { git = "https://github.com/khonsulabs/cushy", rev = "f08b7064ec5effb93eb92bea5a3e0f9e71f13544", features = ["plotters"] }
 kludgine = "0.11"
 log = "0.4"
 plotters = { version = "0.3.6", features = ["fontconfig-dlopen"] }
