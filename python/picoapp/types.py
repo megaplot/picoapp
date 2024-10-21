@@ -64,7 +64,17 @@ def _use_or_infer(
         return limits
 
 
-Output = Plot  # Will eventually be a union type / base type of all supported outputs.
+@dataclass
+class Audio:
+    data: np.ndarray
+    sr: int
+
+
+# Union type of all supported outputs (it remains to be seen if we rather want
+# to introduce a base type, and some sort of interface, but since each type
+# basically needs an explicit implementation on the Rust side, a union type
+# seems more appropriate on first glance).
+Output = Plot | Audio
 
 
 class Outputs:

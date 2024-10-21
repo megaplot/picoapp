@@ -5,14 +5,12 @@ use plotters::prelude::*;
 
 use crate::conversion::Plot;
 
-pub fn plots_widget(plots: Vec<Plot>) -> impl Widget {
-    // TODO: Support more plots, either by using multiple canvases, or plotting
-    // them all into one?
+pub fn plot_widget(plot: &Plot) -> impl Widget {
+    // TODO: Perhaps avoid cloning the data.
+    let plot = plot.clone();
     Canvas::new({
         move |context| {
-            if plots.len() > 0 {
-                render_plot(&plots[0], &context.gfx.as_plot_area()).unwrap();
-            }
+            render_plot(&plot, &context.gfx.as_plot_area()).unwrap();
         }
     })
     .width(Px::new(400)..)

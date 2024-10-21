@@ -16,6 +16,7 @@ kludgine = "0.11"
 log = "0.4"
 plotters = { version = "0.3.6", features = ["fontconfig-dlopen"] }
 pyo3 = "0.22"
+rodio = "0.19.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Note: fontconfig-dlopen should lead to forwarding of feature flag chain:

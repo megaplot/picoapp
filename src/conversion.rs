@@ -61,8 +61,25 @@ pub struct Plot {
     pub y_limits: Range<f32>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Audio {
+    pub data: Vec<f32>,
+    pub sr: u32,
+}
+
+impl Audio {
+    pub fn length_in_sec(&self) -> f32 {
+        self.data.len() as f32 / self.sr as f32
+    }
+}
+
+pub enum Output {
+    Plot(Plot),
+    Audio(Audio),
+}
+
 pub enum CallbackReturn {
-    Outputs(Vec<Plot>),
+    Outputs(Vec<Output>),
     Inputs(Inputs, Py<PyFunction>),
 }
 
@@ -96,7 +113,7 @@ pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<Ca
     }
 }
 
-pub fn parse_outputs(py: Python<'_>, outputs: PyObject) -> PyResult<Vec<Plot>> {
+pub fn parse_outputs(py: Python<'_>, outputs: PyObject) -> PyResult<Vec<Output>> {
     let output = outputs.bind(py);
     let mut results = Vec::new();
     // TODO: This can be improved a lot. Most likely we could leverage the buffer
@@ -112,12 +129,19 @@ pub fn parse_outputs(py: Python<'_>, outputs: PyObject) -> PyResult<Vec<Plot>> {
             let ys: Vec<f64> = object.getattr("ys")?.extract()?;
             let x_limits: (f64, f64) = object.getattr("x_limits")?.extract()?;
             let y_limits: (f64, f64) = object.getattr("y_limits")?.extract()?;
-            results.push(Plot {
+            results.push(Output::Plot(Plot {
                 xs,
                 ys,
                 x_limits: x_limits.0 as f32..x_limits.1 as f32,
                 y_limits: y_limits.0 as f32..y_limits.1 as f32,
-            });
+            }));
+        }
+        // TODO: Decide if this should use a nominal type system, or rather structural
+        // duck typing.
+        if object.get_type().name()? == "Audio" {
+            let data: Vec<f32> = object.getattr("data")?.extract()?;
+            let sr: u32 = object.getattr("sr")?.extract()?;
+            results.push(Output::Audio(Audio { data, sr }));
         }
     }
     Ok(results)

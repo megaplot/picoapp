@@ -7,8 +7,9 @@ use cushy::widgets::Space;
 use pyo3::prelude::*;
 use pyo3::types::PyFunction;
 
-use crate::conversion::{parse_callback_return, CallbackReturn, Input, Slider};
-use crate::ui_plots::plots_widget;
+use crate::conversion::{parse_callback_return, CallbackReturn, Input, Output, Slider};
+use crate::ui_audio::audio_player_widget;
+use crate::ui_plots::plot_widget;
 
 pub fn input_widget(py: Python, inputs: &[Input], py_callback: Py<PyFunction>) -> impl MakeWidget {
     let cb_return_dynamic: Dynamic<Option<CallbackReturn>> = Dynamic::new(None);
@@ -33,7 +34,7 @@ pub fn input_widget(py: Python, inputs: &[Input], py_callback: Py<PyFunction>) -
                 return Space::clear().make_widget();
             };
             match cb_result {
-                CallbackReturn::Outputs(plots) => plots_widget(plots.clone()).make_widget(),
+                CallbackReturn::Outputs(outputs) => outputs_widget(outputs).make_widget(),
                 CallbackReturn::Inputs(inputs, callback) => {
                     input_widget(py, &inputs, callback.clone_ref(py)).make_widget()
                 }
@@ -41,7 +42,18 @@ pub fn input_widget(py: Python, inputs: &[Input], py_callback: Py<PyFunction>) -
         })
     });
 
-    sidebar.and(content.expand()).into_columns()
+    sidebar.and(content.expand()).into_columns().expand()
+}
+
+pub fn outputs_widget(outputs: &[Output]) -> impl MakeWidget {
+    outputs
+        .iter()
+        .map(|output| match output {
+            Output::Plot(plot) => plot_widget(&plot).make_widget(),
+            Output::Audio(audio) => audio_player_widget(audio).make_widget(),
+        })
+        .collect::<WidgetList>()
+        .into_rows()
 }
 
 fn build_slider(
