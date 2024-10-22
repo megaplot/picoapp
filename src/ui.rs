@@ -2,6 +2,7 @@ use cushy::figures::units::UPx;
 use cushy::figures::Size;
 use cushy::value::Dynamic;
 use cushy::widget::MakeWidget;
+use cushy::window::ThemeMode;
 use cushy::Run;
 use log::info;
 use pyo3::exceptions::PyRuntimeError;
@@ -29,6 +30,7 @@ pub fn run_ui(sliders: &[Input], callback: &Bound<'_, PyFunction>) -> PyResult<(
                 .into_window()
                 .inner_size(inner_size)
                 .titled("pico app")
+                .themed_mode(ThemeMode::Dark)
         });
         let result = window.run();
         result.map_err(|e| PyRuntimeError::new_err(format!("Failed to run widget: {}", e)))
