@@ -3,11 +3,11 @@ import numpy as np
 import picoapp
 from picoapp import Audio, Outputs, Plot, Slider
 
+_SAMPLE_RATE = 22050
+
 elements = [
     (slider_freq := Slider("Frequency", 20.0, 440.0, 10_000.0)),
 ]
-
-_SAMPLE_RATE = 22050
 
 
 def create_sine(n: int, freq: float) -> np.ndarray:
