@@ -2,12 +2,22 @@
 #    uv pip compile requirements.in requirements_dev.in -o requirements.txt
 asttokens==2.4.1
     # via stack-data
-black==24.8.0
+audioread==3.0.1
+    # via librosa
+black==24.10.0
     # via -r requirements_dev.in
+certifi==2024.8.30
+    # via requests
+cffi==1.17.1
+    # via soundfile
+charset-normalizer==3.4.0
+    # via requests
 click==8.1.7
     # via black
 decorator==5.1.1
-    # via ipython
+    # via
+    #   ipython
+    #   librosa
 exceptiongroup==1.2.2
     # via
     #   ipython
@@ -16,31 +26,59 @@ executing==2.1.0
     # via stack-data
 flake8==7.1.1
     # via -r requirements_dev.in
+idna==3.10
+    # via requests
 iniconfig==2.0.0
     # via pytest
-ipython==8.27.0
+ipython==8.28.0
     # via -r requirements_dev.in
 isort==5.13.2
     # via -r requirements_dev.in
 jedi==0.19.1
     # via ipython
+joblib==1.4.2
+    # via
+    #   librosa
+    #   scikit-learn
+lazy-loader==0.4
+    # via librosa
+librosa==0.10.2.post1
+    # via -r requirements_dev.in
+llvmlite==0.43.0
+    # via
+    #   -r requirements_dev.in
+    #   numba
 matplotlib-inline==0.1.7
     # via ipython
-maturin==1.7.1
+maturin==1.7.4
     # via -r requirements_dev.in
 mccabe==0.7.0
     # via flake8
-mypy==1.11.2
+msgpack==1.1.0
+    # via librosa
+mypy==1.13.0
     # via -r requirements_dev.in
 mypy-extensions==1.0.0
     # via
     #   black
     #   mypy
-numpy==2.1.1
-    # via -r requirements.in
+numba==0.60.0
+    # via
+    #   -r requirements_dev.in
+    #   librosa
+numpy==2.0.2
+    # via
+    #   -r requirements.in
+    #   librosa
+    #   numba
+    #   scikit-learn
+    #   scipy
+    #   soxr
 packaging==24.1
     # via
     #   black
+    #   lazy-loader
+    #   pooch
     #   pytest
 parso==0.8.4
     # via jedi
@@ -51,10 +89,14 @@ pathspec==0.12.1
 pexpect==4.9.0
     # via ipython
 platformdirs==4.3.6
-    # via black
+    # via
+    #   black
+    #   pooch
 pluggy==1.5.0
     # via pytest
-prompt-toolkit==3.0.47
+pooch==1.8.2
+    # via librosa
+prompt-toolkit==3.0.48
     # via ipython
 ptyprocess==0.7.0
     # via pexpect
@@ -62,17 +104,33 @@ pure-eval==0.2.3
     # via stack-data
 pycodestyle==2.12.1
     # via flake8
+pycparser==2.22
+    # via cffi
 pyflakes==3.2.0
     # via flake8
 pygments==2.18.0
     # via ipython
 pytest==8.3.3
     # via -r requirements_dev.in
+requests==2.32.3
+    # via pooch
+scikit-learn==1.5.2
+    # via librosa
+scipy==1.14.1
+    # via
+    #   librosa
+    #   scikit-learn
 six==1.16.0
     # via asttokens
+soundfile==0.12.1
+    # via librosa
+soxr==0.5.0.post1
+    # via librosa
 stack-data==0.6.3
     # via ipython
-tomli==2.0.1
+threadpoolctl==3.5.0
+    # via scikit-learn
+tomli==2.0.2
     # via
     #   black
     #   maturin
@@ -86,6 +144,9 @@ typing-extensions==4.12.2
     # via
     #   black
     #   ipython
+    #   librosa
     #   mypy
+urllib3==2.2.3
+    # via requests
 wcwidth==0.2.13
     # via prompt-toolkit
