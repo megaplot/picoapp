@@ -59,13 +59,20 @@ pub fn slider_widget(
         })
         .persist();
 
+    let decimal_places = slider.decimal_places;
     let label_row = slider
         .name
         .clone()
         .small()
         .and(
             value
-                .map_each(move |x| format!("{}", transformer.fwd(*x)))
+                .map_each(move |x| {
+                    if let Some(decimal_places) = decimal_places {
+                        format!("{:.prec$}", transformer.fwd(*x), prec = decimal_places)
+                    } else {
+                        format!("{}", transformer.fwd(*x))
+                    }
+                })
                 .small(),
         )
         .into_columns();
@@ -108,7 +115,7 @@ pub fn int_slider_widget(
         .name
         .clone()
         .small()
-        .and(value.map_each(|x| format!("{}", x)).small())
+        .and(value.map_each(move |x| format!("{}", x)).small())
         .into_columns();
 
     let slider = value.clone().slider_between(slider.min, slider.max);

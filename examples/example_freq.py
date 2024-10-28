@@ -6,7 +6,11 @@ from picoapp import Audio, Outputs, Plot, Slider
 _SAMPLE_RATE = 22050
 
 elements = [
-    (slider_freq := Slider("Frequency", 20.0, 440.0, 10_000.0, log=True)),
+    (
+        slider_freq := Slider(
+            "Frequency", 20.0, 440.0, 10_000.0, log=True, decimal_places=2
+        )
+    ),
 ]
 
 

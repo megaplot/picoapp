@@ -8,7 +8,13 @@ import numpy as np
 
 class Slider:
     def __init__(
-        self, name: str, min: float, init: float, max: float, log: bool = False
+        self,
+        name: str,
+        min: float,
+        init: float,
+        max: float,
+        log: bool = False,
+        decimal_places: int | None = None,
     ) -> None:
         if not (min <= init <= max):
             raise ValueError(f"Slider {min=}/{init=}/{max=} must be monotonous.")
@@ -21,6 +27,7 @@ class Slider:
         self._init = init
         self._max = max
         self._log = log
+        self._decimal_places = decimal_places
 
         self._value = init
 

@@ -32,8 +32,10 @@ where
     pub min: T,
     pub init: T,
     pub max: T,
-    // Leaky abstraction: So far "log" is only supported for float sliders.
+    // Leaky abstraction: So far the following is only supported (or makes only sense)
+    // for float sliders.
     pub log: bool,
+    pub decimal_places: Option<usize>,
     pub py_slider: PySlider<T>,
 }
 
@@ -48,6 +50,11 @@ where
         let init: T = obj.getattr("_init")?.extract()?;
         let max: T = obj.getattr("_max")?.extract()?;
         let log: bool = obj.hasattr("_log")? && obj.getattr("_log")?.extract()?;
+        let decimal_places: Option<usize> = if obj.hasattr("_decimal_places")? {
+            obj.getattr("_decimal_places")?.extract()?
+        } else {
+            None
+        };
 
         Ok(Slider {
             name,
@@ -55,6 +62,7 @@ where
             init,
             max,
             log,
+            decimal_places,
             py_slider: PySlider::new(obj.clone().unbind()),
         })
     }
