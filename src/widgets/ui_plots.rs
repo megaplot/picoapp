@@ -3,7 +3,7 @@ use cushy::widget::{MakeWidget, Widget};
 use cushy::widgets::Canvas;
 use plotters::prelude::*;
 
-use crate::conversion::Plot;
+use crate::outputs::Plot;
 
 pub fn plot_widget(plot: &Plot) -> impl Widget {
     // TODO: Perhaps avoid cloning the data.

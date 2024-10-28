@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyFunction, PyList};
 
-use super::conversion::Inputs;
-use super::ui::run_ui;
+use super::inputs::Inputs;
+use super::main_run_ui::run_ui;
 
 #[pyfunction]
 fn run(inputs: &Bound<'_, PyList>, callback: &Bound<'_, PyFunction>) -> PyResult<()> {

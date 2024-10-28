@@ -1,66 +1,13 @@
-use cushy::figures::units::Px;
-use cushy::value::{Destination, Dynamic, Source, Switchable};
-use cushy::widget::WidgetList;
+use cushy::value::{Destination, Dynamic, Source};
 use cushy::widget::{MakeWidget, Widget};
 use cushy::widgets::slider::Slidable;
-use cushy::widgets::Space;
 use pyo3::prelude::*;
 use pyo3::types::PyFunction;
 
-use crate::conversion::{parse_callback_return, CallbackReturn, Input, Output, Slider};
-use crate::ui_audio::audio_player_widget;
-use crate::ui_plots::plot_widget;
+use crate::inputs::Slider;
+use crate::outputs::{parse_callback_return, CallbackReturn};
 
-pub fn input_widget(py: Python, inputs: &[Input], py_callback: Py<PyFunction>) -> impl MakeWidget {
-    let cb_return_dynamic: Dynamic<Option<CallbackReturn>> = Dynamic::new(None);
-
-    // Build the sidebar
-    let mut widget_list = WidgetList::new();
-    for input in inputs.iter() {
-        if let Input::Slider(slider) = input {
-            let control_widget = build_slider(py, slider, &py_callback, &cb_return_dynamic);
-            widget_list = widget_list.and(control_widget);
-        } else if let Input::IntSlider(slider) = input {
-            let control_widget = build_int_slider(py, slider, &py_callback, &cb_return_dynamic);
-            widget_list = widget_list.and(control_widget);
-        }
-    }
-    let sidebar = widget_list.into_rows().contain().width(Px::new(300));
-
-    // Build the content
-    let content = cb_return_dynamic.switcher(|cb_result, _active| {
-        Python::with_gil(|py| {
-            let Some(cb_result) = cb_result else {
-                return Space::clear().make_widget();
-            };
-            match cb_result {
-                CallbackReturn::Outputs(outputs) => outputs_widget(outputs).make_widget(),
-                CallbackReturn::Inputs(inputs, callback) => {
-                    input_widget(py, &inputs, callback.clone_ref(py)).make_widget()
-                }
-            }
-        })
-    });
-
-    sidebar.and(content.expand()).into_columns().expand()
-}
-
-pub fn outputs_widget(outputs: &[Output]) -> impl MakeWidget {
-    outputs
-        .iter()
-        .map(|output| match output {
-            // TODO: Decide if things like contain()/expand() should be set by the
-            // widgets themselves? I don't think we should set it on any output element
-            // unconditionally, because some elements may have a fixed height.
-            Output::Plot(plot) => plot_widget(&plot).contain().expand().make_widget(),
-            Output::Audio(audio) => audio_player_widget(audio).contain().expand().make_widget(),
-        })
-        .collect::<WidgetList>()
-        .into_rows()
-        .expand()
-}
-
-fn build_slider(
+pub fn slider_widget(
     py: Python,
     slider: &Slider<f64>,
     py_callback: &Py<PyFunction>,
@@ -99,7 +46,7 @@ fn build_slider(
     label_row.and(slider).into_rows().contain()
 }
 
-fn build_int_slider(
+pub fn int_slider_widget(
     py: Python,
     slider: &Slider<i64>,
     py_callback: &Py<PyFunction>,

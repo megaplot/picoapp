@@ -1,7 +1,6 @@
-mod conversion;
+mod inputs;
 mod logging_setup;
-mod module;
-mod ui;
-mod ui_audio;
-mod ui_inputs;
-mod ui_plots;
+mod main_run_ui;
+mod outputs;
+mod py_module;
+mod widgets;

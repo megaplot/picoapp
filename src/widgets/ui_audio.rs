@@ -11,7 +11,7 @@ use cushy::widget::{MakeWidget, Widget};
 use cushy::widgets::progress::{Progress, Progressable};
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 
-use super::conversion::Audio;
+use crate::outputs::Audio;
 
 thread_local! {
     // Note that the `OutputStream` must be kept alive as long as the `Sink` is

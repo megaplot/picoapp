@@ -9,9 +9,9 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyFunction;
 
-use crate::conversion::Input;
+use crate::inputs::Input;
 use crate::logging_setup::setup_logging;
-use crate::ui_inputs::input_widget;
+use crate::widgets::reactive_input_output_widget;
 
 pub fn run_ui(sliders: &[Input], callback: &Bound<'_, PyFunction>) -> PyResult<()> {
     let py = callback.py();
@@ -26,7 +26,7 @@ pub fn run_ui(sliders: &[Input], callback: &Bound<'_, PyFunction>) -> PyResult<(
         info!("Initialing app...");
 
         let window = Python::with_gil(|py| {
-            input_widget(py, sliders, callback)
+            reactive_input_output_widget(py, sliders, callback)
                 .into_window()
                 .inner_size(inner_size)
                 .titled("pico app")
