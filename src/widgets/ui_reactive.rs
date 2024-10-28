@@ -10,7 +10,27 @@ use crate::inputs::Input;
 use crate::outputs::CallbackReturn;
 
 use super::ui_outputs::outputs_widget;
+use super::ui_radio::radio_widget;
 use super::ui_slider::{int_slider_widget, slider_widget};
+
+pub fn input_widget(
+    py: Python,
+    input: &Input,
+    py_callback: &Py<PyFunction>,
+    cb_return_dynamic: &Dynamic<Option<CallbackReturn>>,
+) -> impl MakeWidget {
+    match input {
+        Input::Slider(slider) => {
+            slider_widget(py, slider, &py_callback, &cb_return_dynamic).make_widget()
+        }
+        Input::IntSlider(slider) => {
+            int_slider_widget(py, slider, &py_callback, &cb_return_dynamic).make_widget()
+        }
+        Input::Radio(radio) => {
+            radio_widget(py, radio, py_callback, cb_return_dynamic).make_widget()
+        }
+    }
+}
 
 pub fn reactive_input_output_widget(
     py: Python,
@@ -22,13 +42,7 @@ pub fn reactive_input_output_widget(
     // Build the inputs sidebar
     let mut input_widgets = WidgetList::new();
     for input in inputs.iter() {
-        if let Input::Slider(slider) = input {
-            let input_widget = slider_widget(py, slider, &py_callback, &cb_return_dynamic);
-            input_widgets = input_widgets.and(input_widget);
-        } else if let Input::IntSlider(slider) = input {
-            let input_widget = int_slider_widget(py, slider, &py_callback, &cb_return_dynamic);
-            input_widgets = input_widgets.and(input_widget);
-        }
+        input_widgets.push(input_widget(py, input, &py_callback, &cb_return_dynamic));
     }
     let sidebar = input_widgets.into_rows().contain().width(Px::new(300));
 

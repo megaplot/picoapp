@@ -6,4 +6,5 @@ from .types import IntSlider as IntSlider
 from .types import Output as Output
 from .types import Outputs as Outputs
 from .types import Plot as Plot
+from .types import Radio as Radio
 from .types import Slider as Slider

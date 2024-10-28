@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable, Generic, Sequence, TypeVar
 
 import numpy as np
 
@@ -76,7 +76,28 @@ class IntSlider:
         return self._max
 
 
-Input = Slider | IntSlider
+T = TypeVar("T")
+
+
+class Radio(Generic[T]):
+    def __init__(self, name: str, values: Sequence[T], init: T | None = None) -> None:
+        if len(values) == 0:
+            raise ValueError("Radio values must not be empty")
+        self._name = name
+        self._values = values
+        if init is None:
+            self._init_index = 0
+        else:
+            self._init_index = values.index(init)
+
+        self._value = values[self._init_index]
+
+    @property
+    def value(self) -> T:
+        return self._value
+
+
+Input = Slider | IntSlider | Radio
 
 
 class Inputs:

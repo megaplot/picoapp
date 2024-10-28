@@ -1,6 +1,7 @@
 mod ui_audio;
 mod ui_outputs;
 mod ui_plots;
+mod ui_radio;
 mod ui_reactive;
 mod ui_slider;
 

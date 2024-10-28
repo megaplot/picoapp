@@ -1,7 +1,7 @@
 import numpy as np
 
 import picoapp
-from picoapp import Audio, IntSlider, Outputs, Plot, Slider
+from picoapp import Audio, IntSlider, Outputs, Plot, Radio, Slider
 
 _SAMPLE_RATE = 22050
 
@@ -9,6 +9,7 @@ _SAMPLE_RATE = 22050
 elements = [
     (slider_freq := Slider("Frequency", 20.0, 440.0, 10_000.0, log=True)),
     (slider_kernel_size := IntSlider("Kernel size", 8, 16, 32)),
+    (radio_window := Radio("Window", ["Box", "Hann", "Hamming"])),
 ]
 
 
@@ -23,6 +24,8 @@ def callback() -> Outputs:
 
     phases = 2 * np.pi * 3 * np.arange(n) / n
     kernel = np.cos(phases) + 1j * np.sin(phases)
+
+    print(radio_window.value)
 
     return Outputs(
         Plot(

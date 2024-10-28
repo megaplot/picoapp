@@ -14,7 +14,11 @@ pub fn outputs_widget(outputs: &[Output]) -> impl MakeWidget {
             // widgets themselves? I don't think we should set it on any output element
             // unconditionally, because some elements may have a fixed height.
             Output::Plot(plot) => plot_widget(&plot).contain().expand().make_widget(),
-            Output::Audio(audio) => audio_player_widget(audio).contain().expand().make_widget(),
+            Output::Audio(audio) => audio_player_widget(audio)
+                .contain()
+                // Why does horizontal alignment mess up vertical alignment?
+                // .expand_horizontally()
+                .make_widget(),
         })
         .collect::<WidgetList>()
         .into_rows()
