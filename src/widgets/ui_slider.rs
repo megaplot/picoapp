@@ -7,6 +7,28 @@ use pyo3::types::PyFunction;
 use crate::inputs::Slider;
 use crate::outputs::{parse_callback_return, CallbackReturn};
 
+#[derive(Copy, Clone)]
+struct LinLogTransformer {
+    log: bool,
+}
+
+impl LinLogTransformer {
+    fn fwd(&self, x: f64) -> f64 {
+        if self.log {
+            2.0_f64.powf(x)
+        } else {
+            x
+        }
+    }
+    fn bwd(&self, x: f64) -> f64 {
+        if self.log {
+            x.log2()
+        } else {
+            x
+        }
+    }
+}
+
 pub fn slider_widget(
     py: Python,
     slider: &Slider<f64>,
@@ -17,11 +39,13 @@ pub fn slider_widget(
     let py_callback = py_callback.clone_ref(py);
     let cb_return_dynamic = cb_return_dynamic.clone();
 
-    let value = Dynamic::new(slider.init);
+    let transformer = LinLogTransformer { log: slider.log };
+
+    let value = Dynamic::new(transformer.bwd(slider.init));
     value
         .for_each(move |value: &f64| {
             let result = Python::with_gil(|py| -> PyResult<()> {
-                py_slider.set_value(py, *value)?;
+                py_slider.set_value(py, transformer.fwd(*value))?;
 
                 let cb_return = py_callback.call_bound(py, (), None)?;
                 let cb_return = parse_callback_return(py, cb_return)?;
@@ -39,10 +63,16 @@ pub fn slider_widget(
         .name
         .clone()
         .small()
-        .and(value.map_each(|x| format!("{}", x)).small())
+        .and(
+            value
+                .map_each(move |x| format!("{}", transformer.fwd(*x)))
+                .small(),
+        )
         .into_columns();
 
-    let slider = value.clone().slider_between(slider.min, slider.max);
+    let slider = value
+        .clone()
+        .slider_between(transformer.bwd(slider.min), transformer.bwd(slider.max));
     label_row.and(slider).into_rows().contain()
 }
 

@@ -32,6 +32,8 @@ where
     pub min: T,
     pub init: T,
     pub max: T,
+    // Leaky abstraction: So far "log" is only supported for float sliders.
+    pub log: bool,
     pub py_slider: PySlider<T>,
 }
 
@@ -45,12 +47,14 @@ where
         let min: T = obj.getattr("_min")?.extract()?;
         let init: T = obj.getattr("_init")?.extract()?;
         let max: T = obj.getattr("_max")?.extract()?;
+        let log: bool = obj.hasattr("_log")? && obj.getattr("_log")?.extract()?;
 
         Ok(Slider {
             name,
             min,
             init,
             max,
+            log,
             py_slider: PySlider::new(obj.clone().unbind()),
         })
     }
