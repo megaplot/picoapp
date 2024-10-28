@@ -49,11 +49,15 @@ pub fn outputs_widget(outputs: &[Output]) -> impl MakeWidget {
     outputs
         .iter()
         .map(|output| match output {
-            Output::Plot(plot) => plot_widget(&plot).make_widget(),
-            Output::Audio(audio) => audio_player_widget(audio).make_widget(),
+            // TODO: Decide if things like contain()/expand() should be set by the
+            // widgets themselves? I don't think we should set it on any output element
+            // unconditionally, because some elements may have a fixed height.
+            Output::Plot(plot) => plot_widget(&plot).contain().expand().make_widget(),
+            Output::Audio(audio) => audio_player_widget(audio).contain().expand().make_widget(),
         })
         .collect::<WidgetList>()
         .into_rows()
+        .expand()
 }
 
 fn build_slider(
@@ -70,7 +74,7 @@ fn build_slider(
     value
         .for_each(move |value: &f64| {
             let result = Python::with_gil(|py| -> PyResult<()> {
-                py_slider.setattr(py, "value", *value)?;
+                py_slider.set_value(py, *value)?;
 
                 let cb_return = py_callback.call_bound(py, (), None)?;
                 let cb_return = parse_callback_return(py, cb_return)?;
@@ -109,7 +113,7 @@ fn build_int_slider(
     value
         .for_each(move |value: &i64| {
             let result = Python::with_gil(|py| -> PyResult<()> {
-                py_slider.setattr(py, "value", *value)?;
+                py_slider.set_value(py, *value)?;
 
                 let cb_return = py_callback.call_bound(py, (), None)?;
                 let cb_return = parse_callback_return(py, cb_return)?;

@@ -1,31 +1,72 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Sequence
 
 import numpy as np
 
 
-@dataclass
 class Slider:
-    name: str
-    min: float
-    value: float
-    max: float
+    def __init__(
+        self, name: str, min: float, init: float, max: float, log: bool = False
+    ) -> None:
+        if not (min <= init <= max):
+            raise ValueError(f"Slider {min=}/{init=}/{max=} must be monotonous.")
+        if log and not (min > 0 and init > 0 and max > 0):
+            raise ValueError(
+                f"For a logarithmic slider, {min=}/{init=}/{max=} must be positive."
+            )
+        self._name = name
+        self._min = min
+        self._init = init
+        self._max = max
+        self._log = log
 
-    def __post_init__(self) -> None:
-        assert self.min <= self.value <= self.max
+        self._value = init
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def min(self) -> float:
+        return self._min
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def max(self) -> float:
+        return self._max
 
 
-@dataclass
 class IntSlider:
-    name: str
-    min: int
-    value: int
-    max: int
+    def __init__(self, name: str, min: int, init: int, max: int) -> None:
+        if not (min <= init <= max):
+            raise ValueError(f"Slider {min=}/{init=}/{max=} must be monotonous.")
+        self._name = name
+        self._min = min
+        self._init = init
+        self._max = max
 
-    def __post_init__(self) -> None:
-        assert self.min <= self.value <= self.max
+        self._value = init
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def min(self) -> int:
+        return self._min
+
+    @property
+    def value(self) -> int:
+        return self._value
+
+    @property
+    def max(self) -> int:
+        return self._max
 
 
 Input = Slider | IntSlider
@@ -37,7 +78,7 @@ class Inputs:
         self.callback = callback
 
 
-Data = np.ndarray | list[float]
+Data = np.ndarray | Sequence[float]
 
 
 class Plot:

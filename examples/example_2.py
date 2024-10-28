@@ -12,7 +12,7 @@ def main() -> None:
 
     def callback_1() -> Inputs:
 
-        order = int(master_slider.value)  # TODO: IntSlider
+        order = master_slider.value
         print(f"Polynomial order: {order}")
 
         sliders = [
