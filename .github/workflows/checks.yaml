@@ -38,9 +38,11 @@ jobs:
       - name: "Check dbus"
         run: |
           dpkg-query -l libdbus-1-dev || true
+          dpkq-query -l alsa || true
           sudo apt-get update
-          sudo apt install libdbus-1-dev
+          sudo apt install libdbus-1-dev alsa
           dpkg-query -l libdbus-1-dev || true
+          dpkq-query -l alsa || true
 
       - name: "Rust: Tests"
         run: |
