@@ -27,7 +27,7 @@ impl<'py> FromPyObject<'py> for Input {
             Ok(Input::Radio(obj.extract()?))
         } else {
             return Err(PyValueError::new_err(format!(
-                "Invalid callback return type: {:?}",
+                "Invalid input type: {:?}",
                 obj.get_type().name()?
             )));
         }

@@ -2,9 +2,9 @@ use std::ops::Range;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyFunction;
 
 use crate::inputs::Inputs;
+use crate::utils::Callback;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plot {
@@ -33,7 +33,7 @@ pub enum Output {
 
 pub enum CallbackReturn {
     Outputs(Vec<Output>),
-    Inputs(Inputs, Py<PyFunction>),
+    Inputs(Inputs, Callback),
 }
 
 impl PartialEq for CallbackReturn {
@@ -54,15 +54,24 @@ pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<Ca
             py,
             cb_return.getattr("outputs")?.into(),
         )?));
-    } else if cb_return.get_type().name()? == "Inputs" {
-        let inputs = cb_return.getattr("inputs")?.extract()?;
-        let callback = cb_return
-            .getattr("callback")?
-            .downcast_into::<PyFunction>()?
-            .unbind();
-        return Ok(CallbackReturn::Inputs(inputs, callback));
     } else {
-        return Err(PyValueError::new_err("Invalid callback return type."));
+        // Approximate interface of 'Reactive' (duck typing style). In principle it would be
+        // nice to be able to use the equivalent of `instance(cb_retrun, ReactiveBase)`. The
+        // challenge is how to obtain the reference to the `ReactiveBase` type. Options:
+        // * Importing it from Python would add a weird reverse import direction.
+        // * Passing the type itself in from Python may look a bit weird as well, but
+        //   perhaps this is the way to go, especially since we could leverage that
+        //   pattern in other places as well (where we want nominal typing).
+        if cb_return.is_callable() && cb_return.hasattr("inputs")? {
+            let inputs = cb_return.getattr("inputs")?.getattr("inputs")?.extract()?;
+            let callback: Callback = cb_return.getattr("__call__")?.extract()?;
+            return Ok(CallbackReturn::Inputs(inputs, callback));
+        } else {
+            return Err(PyValueError::new_err(format!(
+                "Invalid callback return type: {:?}",
+                cb_return.get_type().name()?
+            )));
+        }
     }
 }
 

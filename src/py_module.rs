@@ -1,13 +1,16 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyFunction, PyList};
+use pyo3::types::PySequence;
 
-use super::inputs::{Input, Inputs};
-use super::main_run_ui::run_ui;
+use crate::inputs::{Input, Inputs};
+use crate::main_run_ui::run_ui;
+use crate::utils::Callback;
 
 #[pyfunction]
-fn run(inputs: &Bound<'_, PyList>, callback: &Bound<'_, PyFunction>) -> PyResult<()> {
+fn run(inputs: &Bound<'_, PySequence>, callback: &Bound<'_, PyAny>) -> PyResult<()> {
+    let py = inputs.py();
     let inputs: Inputs = inputs.extract()?;
-    run_ui(&inputs, callback)?;
+    let callback: Callback = callback.extract()?;
+    run_ui(py, &inputs, callback)?;
     Ok(())
 }
 

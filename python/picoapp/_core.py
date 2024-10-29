@@ -1,7 +1,6 @@
 from . import _picoapp
-from ._types_inputs import Inputs
-from ._types_reactive import Callback
+from ._types_reactive import ReactiveBase
 
 
-def run(inputs: Inputs, callback: Callback) -> None:
-    _picoapp.run(inputs.inputs, callback)
+def run(reactive: ReactiveBase) -> None:
+    _picoapp.run(reactive.inputs.inputs, reactive.__call__)

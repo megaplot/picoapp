@@ -10,3 +10,4 @@ from ._types_outputs import Output as Output
 from ._types_outputs import Outputs as Outputs
 from ._types_outputs import Plot as Plot
 from ._types_reactive import Reactive as Reactive
+from ._types_reactive import ReactiveBase as ReactiveBase

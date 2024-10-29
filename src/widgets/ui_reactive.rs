@@ -4,10 +4,10 @@ use cushy::widget::MakeWidget;
 use cushy::widget::WidgetList;
 use cushy::widgets::Space;
 use pyo3::prelude::*;
-use pyo3::types::PyFunction;
 
 use crate::inputs::Input;
 use crate::outputs::CallbackReturn;
+use crate::utils::Callback;
 
 use super::ui_checkbox::checkbox_widget;
 use super::ui_outputs::outputs_widget;
@@ -17,15 +17,15 @@ use super::ui_slider::{int_slider_widget, slider_widget};
 pub fn input_widget(
     py: Python,
     input: &Input,
-    py_callback: &Py<PyFunction>,
+    py_callback: &Callback,
     cb_return_dynamic: &Dynamic<Option<CallbackReturn>>,
 ) -> impl MakeWidget {
     match input {
         Input::Slider(slider) => {
-            slider_widget(py, slider, &py_callback, &cb_return_dynamic).make_widget()
+            slider_widget(py, slider, py_callback, &cb_return_dynamic).make_widget()
         }
         Input::IntSlider(slider) => {
-            int_slider_widget(py, slider, &py_callback, &cb_return_dynamic).make_widget()
+            int_slider_widget(py, slider, py_callback, &cb_return_dynamic).make_widget()
         }
         Input::Checkbox(checkbox) => {
             checkbox_widget(py, checkbox, py_callback, cb_return_dynamic).make_widget()
@@ -39,7 +39,7 @@ pub fn input_widget(
 pub fn reactive_input_output_widget(
     py: Python,
     inputs: &[Input],
-    py_callback: Py<PyFunction>,
+    py_callback: &Callback,
 ) -> impl MakeWidget {
     let cb_return_dynamic: Dynamic<Option<CallbackReturn>> = Dynamic::new(None);
 
@@ -59,7 +59,7 @@ pub fn reactive_input_output_widget(
             match cb_result {
                 CallbackReturn::Outputs(outputs) => outputs_widget(outputs).make_widget(),
                 CallbackReturn::Inputs(inputs, callback) => {
-                    reactive_input_output_widget(py, &inputs, callback.clone_ref(py)).make_widget()
+                    reactive_input_output_widget(py, &inputs, callback).make_widget()
                 }
             }
         })

@@ -1,15 +1,15 @@
 use cushy::value::{Destination, Dynamic, Source};
 use cushy::widget::{MakeWidget, Widget, WidgetList};
 use pyo3::prelude::*;
-use pyo3::types::PyFunction;
 
 use crate::inputs::Radio;
 use crate::outputs::{parse_callback_return, CallbackReturn};
+use crate::utils::Callback;
 
 pub fn radio_widget(
     py: Python,
     radio: &Radio,
-    py_callback: &Py<PyFunction>,
+    py_callback: &Callback,
     cb_return_dynamic: &Dynamic<Option<CallbackReturn>>,
 ) -> impl Widget {
     let py_slider = radio.py_radio.clone_ref(py);
@@ -23,7 +23,7 @@ pub fn radio_widget(
             let result = Python::with_gil(|py| -> PyResult<()> {
                 py_slider.set_to_index(py, *index)?;
 
-                let cb_return = py_callback.call_bound(py, (), None)?;
+                let cb_return = py_callback.call(py)?;
                 let cb_return = parse_callback_return(py, cb_return)?;
 
                 cb_return_dynamic.set(Some(cb_return));

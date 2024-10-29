@@ -23,4 +23,4 @@ def callback() -> pa.Outputs:
     )
 
 
-pa.run(inputs, callback)
+pa.run(pa.Reactive(inputs, callback))

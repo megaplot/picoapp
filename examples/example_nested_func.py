@@ -30,7 +30,7 @@ def main() -> None:
 
         return pa.Reactive(pa.Inputs(*sliders), callback=callback_2)
 
-    pa.run(inputs, callback_1)
+    pa.run(pa.Reactive(inputs, callback_1))
 
 
 if __name__ == "__main__":
