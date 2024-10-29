@@ -37,6 +37,7 @@ jobs:
 
       - name: "Check dbus"
         run: |
+          apt-get update
           dpkg-query -l libdbus-1-dev
           sudo apt install libdbus-1-dev
 
