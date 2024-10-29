@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable, Generic, Sequence, TypeVar
-
-import numpy as np
+from typing import Generic, Sequence, TypeVar
 
 
 class Slider:
@@ -113,3 +110,8 @@ class Radio(Generic[T]):
 
 
 Input = Slider | IntSlider | Checkbox | Radio
+
+
+class Inputs:
+    def __init__(self, *inputs: Input):
+        self.inputs = inputs
