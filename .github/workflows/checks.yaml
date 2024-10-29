@@ -39,10 +39,14 @@ jobs:
         run: |
           dpkg-query -l libdbus-1-dev || true
           dpkq-query -l alsa || true
+          dpkq-query -l libasound2-dev || true
+
           sudo apt-get update
-          sudo apt install libdbus-1-dev alsa
+          sudo apt install libdbus-1-dev alsa libasound2-dev
+
           dpkg-query -l libdbus-1-dev || true
           dpkq-query -l alsa || true
+          dpkq-query -l libasound2-dev || true
 
       - name: "Rust: Tests"
         run: |
