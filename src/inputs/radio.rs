@@ -1,4 +1,5 @@
-use pyo3::{prelude::*, types::PyList};
+use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 /// Wrapper newtype for the underlying PyObject instance.
 #[derive(Debug)]

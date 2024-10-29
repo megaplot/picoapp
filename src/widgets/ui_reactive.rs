@@ -9,6 +9,7 @@ use pyo3::types::PyFunction;
 use crate::inputs::Input;
 use crate::outputs::CallbackReturn;
 
+use super::ui_checkbox::checkbox_widget;
 use super::ui_outputs::outputs_widget;
 use super::ui_radio::radio_widget;
 use super::ui_slider::{int_slider_widget, slider_widget};
@@ -25,6 +26,9 @@ pub fn input_widget(
         }
         Input::IntSlider(slider) => {
             int_slider_widget(py, slider, &py_callback, &cb_return_dynamic).make_widget()
+        }
+        Input::Checkbox(checkbox) => {
+            checkbox_widget(py, checkbox, py_callback, cb_return_dynamic).make_widget()
         }
         Input::Radio(radio) => {
             radio_widget(py, radio, py_callback, cb_return_dynamic).make_widget()

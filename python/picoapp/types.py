@@ -76,6 +76,21 @@ class IntSlider:
         return self._max
 
 
+class Checkbox:
+    def __init__(self, name: str, init: bool = False) -> None:
+        self._name = name
+        self._init = init
+
+        self._value = init
+
+    @property
+    def value(self) -> bool:
+        return self._value
+
+    def __bool__(self) -> bool:
+        return self._value
+
+
 T = TypeVar("T")
 
 
@@ -97,7 +112,7 @@ class Radio(Generic[T]):
         return self._value
 
 
-Input = Slider | IntSlider | Radio
+Input = Slider | IntSlider | Checkbox | Radio
 
 
 class Inputs:

@@ -1,5 +1,6 @@
 from .core import run as run
 from .types import Audio as Audio
+from .types import Checkbox as Checkbox
 from .types import Input as Input
 from .types import Inputs as Inputs
 from .types import IntSlider as IntSlider

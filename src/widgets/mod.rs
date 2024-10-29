@@ -1,4 +1,5 @@
 mod ui_audio;
+mod ui_checkbox;
 mod ui_outputs;
 mod ui_plots;
 mod ui_radio;
