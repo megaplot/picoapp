@@ -37,9 +37,10 @@ jobs:
 
       - name: "Check dbus"
         run: |
+          dpkg-query -l libdbus-1-dev || true
           apt-get update
-          dpkg-query -l libdbus-1-dev
-          sudo apt install libdbus-1-dev
+          apt install libdbus-1-dev
+          dpkg-query -l libdbus-1-dev || true
 
       - name: "Rust: Tests"
         run: |
