@@ -35,6 +35,11 @@ jobs:
         with:
           toolchain: stable
 
+      - name: "Check dbus"
+        run: |
+          dpkg-query -l libdbus-1-dev
+          sudo apt install libdbus-1-dev
+
       - name: "Rust: Tests"
         run: |
           cargo test
