@@ -1,7 +1,8 @@
 from typing import Sequence
 
 from . import _picoapp
-from .types import Callback, Input
+from ._types_inputs import Input
+from ._types_reactive import Callback
 
 
 def run(inputs: Sequence[Input], callback: Callback) -> None:
