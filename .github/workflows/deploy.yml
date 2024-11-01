@@ -106,9 +106,9 @@ jobs:
                 sudo apt-get install -y libasound2-dev
                 ;;
               "x86" | "x86_64")
-                # NOTE: rust-cross/manylinux docker images are CentOS based
-                yum update -y
-                yum install -y alsa-lib-devel
+                # NOTE: rust-cross/rust-musl-cross actually seem Ubuntu based.
+                sudo apt-get update
+                sudo apt-get install -y libasound2-dev
                 ;;
             esac
       - name: Upload wheels
