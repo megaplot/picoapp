@@ -30,8 +30,8 @@ jobs:
             target: x86
           # - runner: ubuntu-latest
           #   target: aarch64
-          # - runner: ubuntu-latest
-          #   target: armv7
+          - runner: ubuntu-latest
+            target: armv7
           # - runner: ubuntu-latest
           #   target: s390x
           # - runner: ubuntu-latest
@@ -45,7 +45,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12
           sccache: 'true'
           manylinux: auto
           before-script-linux: |
@@ -53,10 +53,14 @@ jobs:
             uname -a
             cat /etc/*-release
             case "${{ matrix.platform.target }}" in
-              "aarch64" | "armv7" | "s390x" | "ppc64le")
+              "aarch64" | "s390x" | "ppc64le")
                 # NOTE: pypa/manylinux docker images are Debian based
                 sudo apt-get update
                 sudo apt-get install -y libasound2-dev
+                ;;
+              "armv7")
+                sudo apt-get update
+                sudo apt-get install -y libasound2-dev:armhf
                 ;;
               "x86" | "x86_64")
                 # NOTE: rust-cross/manylinux docker images are CentOS based
@@ -70,6 +74,9 @@ jobs:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
 
+  #
+  # TODO: Figure out how to get this to work with external dependencies...
+  #
   # musllinux:
   #   runs-on: ${{ matrix.platform.runner }}
   #   strategy:
@@ -92,7 +99,7 @@ jobs:
   #       uses: PyO3/maturin-action@v1
   #       with:
   #         target: ${{ matrix.platform.target }}
-  #         args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
+  #         args: --release --out dist --interpreter python3.10 python3.11 python3.12
   #         sccache: 'true'
   #         manylinux: musllinux_1_2
   #         before-script-linux: |
@@ -106,7 +113,8 @@ jobs:
   #               sudo apt-get install -y libasound2-dev
   #               ;;
   #             "x86" | "x86_64")
-  #               # NOTE: rust-cross/rust-musl-cross actually seem Ubuntu based.
+  #               # NOTE: rust-cross/rust-musl-cross actually seem Ubuntu based (in contrast to rust-cross/manylinux?)
+  #               # See: https://github.com/rust-cross/rust-musl-cross/blob/main/Dockerfile
   #               sudo apt-get update
   #               sudo apt-get install -y libasound2-dev
   #               ;;
@@ -136,7 +144,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -162,7 +170,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
