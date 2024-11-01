@@ -50,6 +50,9 @@ jobs:
           manylinux: auto
           before-script-linux: |
             echo "Running before-script-linux for target: ${{ matrix.platform.target }}"
+            uname -a
+            lsb_release -a
+            cat /etc/*-release
             case "${{ matrix.platform.target }}" in
               "aarch64" | "armv7" | "s390x" | "ppc64le")
                 # NOTE: pypa/manylinux docker images are Debian based
@@ -59,7 +62,7 @@ jobs:
               "x86" | "x86_64")
                 # NOTE: rust-cross/manylinux docker images are CentOS based
                 yum update -y
-                yum install -y libasound2-dev
+                yum install -y alsa-lib-devel
                 ;;
             esac
       - name: Upload wheels
@@ -95,6 +98,9 @@ jobs:
           manylinux: musllinux_1_2
           before-script-linux: |
             echo "Running before-script-linux for target: ${{ matrix.platform.target }}"
+            uname -a
+            lsb_release -a
+            cat /etc/*-release
             case "${{ matrix.platform.target }}" in
               "aarch64" | "armv7" | "s390x" | "ppc64le")
                 # NOTE: pypa/manylinux docker images are Debian based
@@ -104,7 +110,7 @@ jobs:
               "x86" | "x86_64")
                 # NOTE: rust-cross/manylinux docker images are CentOS based
                 yum update -y
-                yum install -y libasound2-dev
+                yum install -y alsa-lib-devel
                 ;;
             esac
       - name: Upload wheels
