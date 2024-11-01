@@ -53,6 +53,14 @@ The maturin side can then take care of packaging up the linked `.so` into the ta
 https://github.com/rust-lang/pkg-config-rs/issues/109
 
 
+## ALSA specific findings
+
+- https://github.com/rust-cross/rust-musl-cross/issues/69
+  Basically describes exactly my problem
+- https://github.com/diwic/alsa-sys/issues/10
+  Is static linking an option?
+
+
 ## Maturin GitHub Actions
 
 Some notes / resources:

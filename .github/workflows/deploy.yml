@@ -61,6 +61,8 @@ jobs:
               "armv7")
                 # Probably requires something more like this:
                 # https://askubuntu.com/a/1323570/161463
+                sudo apt-get update
+                sudo apt-get install -y apt-transport-https
                 sudo dpkg --add-architecture armhf
                 sudo apt-get update
                 sudo apt-get install -y libasound2-dev:armhf
