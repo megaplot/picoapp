@@ -16,6 +16,43 @@ However, it looks like it actually can internally use `uv` as well:
 
 # Deployment / Cross Compiling
 
+## Python side
+
+Recommended reading list:
+
+- [PEP 513](https://peps.python.org/pep-0513/) which introduces the manylinux concepts.
+- [PEP 571](https://peps.python.org/pep-0571/) which introduces the `manylinux2010` tag.
+- [PEP 599](https://peps.python.org/pep-0599/) which introduces the `manylinux2014` tag.
+- [PEP 600](https://peps.python.org/pep-0600/) which introduces the newer GLIC-version-specific tags.
+
+PEP 513 mentions methods how to deal with situations that require depending on third party libraries.
+Apart from static linking, the recommended solution is to bundle `.so`'s.
+The `auditwheel` tool can be used to check wheels for manylinux compliance, but also to help with bundling `.so`'s.
+
+Maturin builds on `auditwheel` and thus is generally able to produce manylinux conforming wheels including bundled third party `.so`'s.
+
+
+## What are all these errors when (cross) compiling with external dependencies involved?
+
+In general, Rust libraries typically use the `package-config` tool to locate system site libraries to link against during building.
+When it comes to building insider docker containers and/or cross compiling, many things can go wrong, which is why one is often facing errors from `package-config`.
+
+As an example, the `alsa-sys` crate for instance runs this `build.rs` script during building:
+https://github.com/diwic/alsa-sys/blob/master/build.rs
+
+When trying to build from inside one of the manylinux/musllinux docker containers the first hurdle is that the third parties libraries are not installed.
+Thus, the first error one may encounter is that `package-config` complains that the library is just not installed.
+
+This can be solved reasonably well using the `before-script-linux` mechanism of maturin's GitHub Action.
+
+Note: In some images the `package-config` tool itself may not be installed, which can also be installed manually.
+
+When there is no cross compiling involved (i.e., when the target architecture matches the docker container architecture), `package-config` should be able to locate the library now, and building should succeed.
+The maturin side can then take care of packaging up the linked `.so` into the target wheel, as described by PEP 513.
+
+https://github.com/rust-lang/pkg-config-rs/issues/109
+
+
 ## Maturin GitHub Actions
 
 Some notes / resources:
