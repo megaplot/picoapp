@@ -38,9 +38,11 @@ jobs:
       - name: "Install prerequisites"
         run: |
           dpkq-query -l libasound2-dev || true
+          dpkq-query -l libdbus-1-dev || true
           sudo apt-get update
-          sudo apt install libdbus-1-dev alsa libasound2-dev
+          sudo apt install libasound2-dev libdbus-1-dev
           dpkq-query -l libasound2-dev || true
+          dpkq-query -l libdbus-1-dev || true
 
       - name: "Rust: Tests"
         run: |

@@ -181,7 +181,7 @@ virtualenv "$TMP_VENV_DIR"
 . $TMP_VENV_DIR/bin/activate
 pip install picoapp numpy
 python -c "import picoapp; print(picoapp.__file__)"
-python example/example_1.py
+python examples/example_1.py
 ```
 
 
