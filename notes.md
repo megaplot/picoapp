@@ -50,15 +50,76 @@ Note: In some images the `package-config` tool itself may not be installed, whic
 When there is no cross compiling involved (i.e., when the target architecture matches the docker container architecture), `package-config` should be able to locate the library now, and building should succeed.
 The maturin side can then take care of packaging up the linked `.so` into the target wheel, as described by PEP 513.
 
-https://github.com/rust-lang/pkg-config-rs/issues/109
+## Cross-compilation
+
+Things get really funny for actual cross compiling, i.e., where the target architecture does not match the docker container architecture.
+The challenge here is that it would generally not be sound to just link against certain `.so` that exist inside the docker, because they are the library in a "wrong" architecture.
+`package-config` comes with a general protection against doing that, and will error with something saying "pkg-config has not been configured for cross compilation".
+See e.g.:
+
+- https://github.com/rust-lang/pkg-config-rs/issues/109
+- https://github.com/rust-lang/pkg-config-rs?tab=readme-ov-file#external-configuration-via-target-scoped-environment-variables
+- https://docs.rs/pkg-config/latest/pkg_config/#cross-compilation
+
+So just setting `PKG_CONFIG_ALLOW_CROSS=1` would only disable the check, but probably would lead nowhere.
+What is needed is to actually install the libraries for that architecture, and then configure `package-config` to find/use them.
+
+### Installing libraries for different architectures
+
+As suggested [here](https://github.com/rust-cross/rust-musl-cross/issues/69#issuecomment-1272433482) the principle pattern should be something like this:
+
+```sh
+# in the example for armhf
+sudo dpkg --add-architecture armhf
+sudo apt update
+sudo apt install -y libasound2-dev:armhf
+```
+
+Side note about the architecture names:
+The names used by Debian/Ubuntu (`armhf`) may not be the names used by the manylinux platform tag convention (`armv7` or is it `armv7l`?), but typically reasonably similar to guess.
+To see the available architectures on Ubuntu side, one can use the package search, e.g.:
+https://packages.ubuntu.com/jammy/libasound2-dev
+
+Now the snippet above unfortunately doesn't work that easily.
+When doing that one will get "404 not found" errors during the `apt update`.
+Apparently the reason is that it enables the armhf architecture for all sources entries, but some of the existing ones may not contain any armhf binaries.
+Therefore it is necessary to actually manually massage the `sources.list`:
+* Prefixing the existing entries with an `[arch=amd86]` so that they are only used for the host/container architecture.
+* Manually added (a subset) of sources entries with an `[arch=armhf]` tag.
+
+Some related questions that helped me to make it work:
+* https://askubuntu.com/questions/1244195/apt-cant-find-package-libasound2-dev-20-04-arm64
+* https://askubuntu.com/questions/430705/how-to-use-apt-get-to-download-multi-arch-library
+* https://stackoverflow.com/questions/38002543/apt-get-update-returned-a-non-zero-code-100
+  This one is actually misleading -- that's the error I got, but no answer mentions the possible issues of having `sources.list` entries for a different architecture that don't contain binaries.
+* https://www.reddit.com/r/linuxquestions/comments/zopt3j/apt_giving_me_404_errors_when_i_try_and_add_a/
+* https://askubuntu.com/questions/1307659/arm64-multi-arch-docker-build-fails-on-apt-update
+
+### Using the installed libraries (different architecture) with package-config
+
+Still to be figured out...
 
 
-## ALSA specific findings
+
+
+## ALSA specific
+
+The library that we need is `libasound2.so`.
+
+The corresponding package name seems to be:
+- `libasound2-dev` for Debian/Ubuntu
+- `alsa-lib-devel` for Fedora/CentOS
+
+Some more findings:
 
 - https://github.com/rust-cross/rust-musl-cross/issues/69
   Basically describes exactly my problem
 - https://github.com/diwic/alsa-sys/issues/10
   Is static linking an option?
+- https://github.com/cross-rs/cross/wiki/FAQ#linking-external-libraries
+  This example looks interesting because it directly shows how to cross compile against `libasound2-dev:armhf`.
+  However this is for `cross-rs`, so I'm not sure if that helps for building with `maturin`?
+- https://stackoverflow.com/questions/57037550/alsa-linking-when-cross-compiling-rust-program-for-arm
 
 
 ## Maturin GitHub Actions
