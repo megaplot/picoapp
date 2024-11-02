@@ -98,11 +98,38 @@ Some related questions that helped me to make it work:
 ### Using the installed libraries (different architecture) with package-config
 
 Still to be figured out...
+https://github.com/rust-lang/pkg-config-rs/issues/172
+
+Currently, I'm at the point that I successfully installed `libasound2-dev:armhf` and trying a desperate `PKG_CONFIG_ALLOW_CROSS=1`.
+But this errors with:
+
+```
+Could not run `PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 pkg-config --libs --cflags alsa`
+The pkg-config command could not be found.
+
+Most likely, you need to install a pkg-config package for your OS.
+Try `apt install pkg-config`, or `yum install pkg-config`,
+or `pkg install pkg-config`, or `apk add pkgconfig` depending on your distribution.
+
+If you've already installed it, ensure the pkg-config command is one of the
+directories in the PATH environment variable.
+
+If you did not expect this build to link to a pre-installed system library,
+then check documentation of the alsa-sys crate for an option to
+build the library from source, or disable features or dependencies
+that require pkg-config.
+```
+
+This kind of makes sense, because `libasound2-dev:armhf` probably didn't install itself in the default location?
 
 
+### What about cross-rs?
+
+I don't really understand if it would be usable with `maturin`:
+https://github.com/PyO3/maturin/discussions/2287
 
 
-## ALSA specific
+## ALSA related
 
 The library that we need is `libasound2.so`.
 
@@ -120,6 +147,13 @@ Some more findings:
   This example looks interesting because it directly shows how to cross compile against `libasound2-dev:armhf`.
   However this is for `cross-rs`, so I'm not sure if that helps for building with `maturin`?
 - https://stackoverflow.com/questions/57037550/alsa-linking-when-cross-compiling-rust-program-for-arm
+
+## dbus related
+
+- https://github.com/cross-rs/wiki_assets/tree/main/FAQ/dbus
+- https://github.com/diwic/dbus-rs/issues/399
+- https://github.com/diwic/dbus-rs/pull/408
+  Note that dbus-rs has a "vendored" build mode, which was also suggested for ALSA here: https://github.com/diwic/alsa-sys/issues/10#issuecomment-2182185812
 
 
 ## Maturin GitHub Actions
