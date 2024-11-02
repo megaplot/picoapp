@@ -28,14 +28,15 @@ jobs:
             target: x86_64
           - runner: ubuntu-latest
             target: x86
-          - runner: ubuntu-latest
-            target: aarch64
-          - runner: ubuntu-latest
-            target: armv7
-          - runner: ubuntu-latest
-            target: s390x
-          - runner: ubuntu-latest
-            target: ppc64le
+          # TODO: Try to make cross compilation work again...
+          # - runner: ubuntu-latest
+          #   target: aarch64
+          # - runner: ubuntu-latest
+          #   target: armv7
+          # - runner: ubuntu-latest
+          #   target: s390x
+          # - runner: ubuntu-latest
+          #   target: ppc64le
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,45 +46,100 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12
           sccache: 'true'
           manylinux: auto
+          before-script-linux: |
+            echo "Running before-script-linux for target: ${{ matrix.platform.target }}"
+            uname -a
+            cat /etc/*-release
+            case "${{ matrix.platform.target }}" in
+              "aarch64" | "s390x" | "ppc64le")
+                # NOTE: pypa/manylinux docker images are Debian based
+                sudo apt-get update
+                sudo apt-get install -y libasound2-dev
+                ;;
+              "armv7")
+                # Probably requires something more like this:
+                # https://askubuntu.com/a/1323570/161463
+                sudo dpkg --add-architecture armhf
+                sudo sed -i "s/deb h/deb [arch=amd64] h/g" /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy main restricted" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy universe" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-updates universe" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy multiverse" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-updates multiverse" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-security universe" >> /etc/apt/sources.list
+                sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-security multiverse" >> /etc/apt/sources.list
+                sudo apt-get update
+                sudo apt-get install -y libasound2-dev:armhf
+                export PKG_CONFIG_ALLOW_CROSS=1
+                ;;
+              "x86" | "x86_64")
+                # NOTE: rust-cross/manylinux docker images are CentOS based
+                yum update -y
+                yum install -y alsa-lib-devel
+                ;;
+            esac
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
 
-  musllinux:
-    runs-on: ${{ matrix.platform.runner }}
-    strategy:
-      matrix:
-        platform:
-          - runner: ubuntu-latest
-            target: x86_64
-          - runner: ubuntu-latest
-            target: x86
-          - runner: ubuntu-latest
-            target: aarch64
-          - runner: ubuntu-latest
-            target: armv7
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
-          sccache: 'true'
-          manylinux: musllinux_1_2
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-musllinux-${{ matrix.platform.target }}
-          path: dist
+  #
+  # TODO: Figure out how to get this to work with external dependencies...
+  #
+  # musllinux:
+  #   runs-on: ${{ matrix.platform.runner }}
+  #   strategy:
+  #     matrix:
+  #       platform:
+  #         - runner: ubuntu-latest
+  #           target: x86_64
+  #         - runner: ubuntu-latest
+  #           target: x86
+  #         - runner: ubuntu-latest
+  #           target: aarch64
+  #         - runner: ubuntu-latest
+  #           target: armv7
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: 3.x
+  #     - name: Build wheels
+  #       uses: PyO3/maturin-action@v1
+  #       with:
+  #         target: ${{ matrix.platform.target }}
+  #         args: --release --out dist --interpreter python3.10 python3.11 python3.12
+  #         sccache: 'true'
+  #         manylinux: musllinux_1_2
+  #         before-script-linux: |
+  #           echo "Running before-script-linux for target: ${{ matrix.platform.target }}"
+  #           uname -a
+  #           cat /etc/*-release
+  #           case "${{ matrix.platform.target }}" in
+  #             "aarch64" | "armv7" | "s390x" | "ppc64le")
+  #               # NOTE: pypa/manylinux docker images are Debian based
+  #               sudo apt-get update
+  #               sudo apt-get install -y libasound2-dev
+  #               ;;
+  #             "x86" | "x86_64")
+  #               # NOTE: rust-cross/rust-musl-cross actually seem Ubuntu based (in contrast to rust-cross/manylinux?)
+  #               # See: https://github.com/rust-cross/rust-musl-cross/blob/main/Dockerfile
+  #               sudo apt-get update
+  #               sudo apt-get install -y libasound2-dev
+  #               ;;
+  #           esac
+  #     - name: Upload wheels
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: wheels-musllinux-${{ matrix.platform.target }}
+  #         path: dist
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
@@ -104,7 +160,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -130,7 +186,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.8 python3.9 python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -157,7 +213,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [linux, musllinux, windows, macos, sdist]
+    needs: [linux, windows, macos, sdist] # musllinux
     steps:
       - uses: actions/download-artifact@v4
       - name: Publish to PyPI

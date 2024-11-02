@@ -38,7 +38,7 @@ pub fn checkbox_widget(
 
     checkbox_state
         .clone()
-        .to_checkbox(&checkbox.name)
+        .to_checkbox(&*checkbox.name)
         .small()
         .contain()
 }
