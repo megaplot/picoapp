@@ -147,8 +147,12 @@ Some more findings:
   This example looks interesting because it directly shows how to cross compile against `libasound2-dev:armhf`.
   However this is for `cross-rs`, so I'm not sure if that helps for building with `maturin`?
 - https://stackoverflow.com/questions/57037550/alsa-linking-when-cross-compiling-rust-program-for-arm
+  This looks interesting.
+
 
 ## dbus related
+
+Library name: `libdbus-1-dev`
 
 - https://github.com/cross-rs/wiki_assets/tree/main/FAQ/dbus
 - https://github.com/diwic/dbus-rs/issues/399
@@ -157,6 +161,9 @@ Some more findings:
 
 
 ## Maturin GitHub Actions
+
+For overview of the images used, see:
+https://github.com/PyO3/maturin-action?tab=readme-ov-file#manylinux-docker-container
 
 Some notes / resources:
 
