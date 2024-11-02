@@ -39,7 +39,7 @@ pub fn radio_widget(
     options_widget_list.push(radio.name.clone().small());
 
     for (idx, name) in radio.value_names.iter().enumerate() {
-        options_widget_list.push(option.new_radio(idx, name.as_ref()).small());
+        options_widget_list.push(option.new_radio(idx, name).small());
     }
 
     options_widget_list.into_rows().contain()
