@@ -57,7 +57,7 @@ jobs:
               "aarch64" | "s390x" | "ppc64le")
                 # NOTE: pypa/manylinux docker images are Debian based
                 sudo apt-get update
-                sudo apt-get install -y libasound2-dev
+                sudo apt-get install -y libasound2-dev libdbus-1-dev
                 ;;
               "armv7")
                 # Probably requires something more like this:
@@ -75,7 +75,7 @@ jobs:
                 sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-security universe" >> /etc/apt/sources.list
                 sudo echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-security multiverse" >> /etc/apt/sources.list
                 sudo apt-get update
-                sudo apt-get install -y libasound2-dev:armhf
+                sudo apt-get install -y libasound2-dev:armhf libdbus-1-dev:armhf
                 export PKG_CONFIG_ALLOW_CROSS=1
                 ;;
               "x86" | "x86_64")

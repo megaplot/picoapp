@@ -1,6 +1,6 @@
 [package]
 name = "picoapp"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,8 +10,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 
-cushy = { version = "0.4", features = ["plotters"] }
-# cushy = { git = "https://github.com/khonsulabs/cushy", rev = "d032299fc584b64bbb07daef1d17f14ff154125b", features = ["plotters"] }
+# cushy = { version = "0.4", features = ["plotters"] }
+cushy = { git = "https://github.com/khonsulabs/cushy", rev = "c815ab49f0bfd8aaf37491e4e3c047ed2d7e7323", features = ["plotters"] }
 kludgine = "0.11"
 log = "0.4"
 plotters = { version = "0.3.6", features = ["fontconfig-dlopen"] }
