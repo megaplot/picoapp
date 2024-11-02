@@ -81,7 +81,7 @@ jobs:
               "x86" | "x86_64")
                 # NOTE: rust-cross/manylinux docker images are CentOS based
                 yum update -y
-                yum install -y alsa-lib-devel
+                yum install -y alsa-lib-devel dbus-devel
                 ;;
             esac
       - name: Upload wheels
