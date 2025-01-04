@@ -7,7 +7,7 @@ _SAMPLE_RATE = 22050
 
 inputs = pa.Inputs(
     (slider_freq := pa.Slider("Frequency", 20.0, 440.0, 10_000.0, log=True)),
-    (slider_kernel_size := pa.IntSlider("Kernel size", 8, 16, 32)),
+    (slider_kernel_size := pa.IntSlider("Kernel size", 16, 64, 1024)),
     (radio_window := pa.Radio("Window", ["Box", "Hann", "Hamming"])),
 )
 
@@ -17,21 +17,40 @@ def create_sine(n: int, freq: float) -> np.ndarray:
 
 
 def callback() -> pa.Outputs:
-    audio = create_sine(n=_SAMPLE_RATE, freq=slider_freq.value)
+    print(f"{slider_freq.value=} {slider_kernel_size.value=} {radio_window.value=}")
 
-    n = slider_kernel_size.value
+    freq = slider_freq.value
+    n_kernel = slider_kernel_size.value
 
-    phases = 2 * np.pi * 3 * np.arange(n) / n
+    phases = 2 * np.pi * freq * np.arange(n_kernel) / _SAMPLE_RATE
     kernel = np.cos(phases) + 1j * np.sin(phases)
 
-    print(radio_window.value)
+    window = None
+    if radio_window.value == "Hann":
+        window = np.hanning(n_kernel)
+    elif radio_window.value == "Hamming":
+        window = np.hamming(n_kernel)
+
+    if window is not None:
+        kernel *= window
+
+    # When using `np.fft.fft` with an implicit length that is larger then the signal
+    # itself, it gets zero padded, leading to an increased spectral resolution.
+    n_block = _SAMPLE_RATE
 
     return pa.Outputs(
         pa.Plot(
-            xs=np.arange(len(audio)),
-            ys=np.abs(np.fft.fft(kernel, n=len(audio))),
+            xs=np.arange(n_kernel),
+            ys=np.real(kernel),
         ),
-        pa.Audio(audio, sr=_SAMPLE_RATE),
+        pa.Plot(
+            xs=np.arange(n_kernel),
+            ys=np.imag(kernel),
+        ),
+        pa.Plot(
+            xs=np.arange(n_block) / n_block * 2 * _SAMPLE_RATE,
+            ys=np.abs(np.fft.fft(kernel, n=n_block)),
+        ),
     )
 
 

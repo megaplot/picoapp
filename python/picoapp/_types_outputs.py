@@ -22,6 +22,31 @@ class Plot:
         self.x_limits = _use_or_infer(x_limits, xs)
         self.y_limits = _use_or_infer(y_limits, ys)
 
+        if isinstance(xs, np.ndarray):
+            if xs.ndim != 1:
+                raise ValueError(
+                    f"Plot data must be 1-dimensional, but xs has {xs.ndim} dimensions"
+                )
+            else:
+                len_xs = xs.shape[0]
+        else:
+            len_xs = len(xs)
+
+        if isinstance(ys, np.ndarray):
+            if ys.ndim != 1:
+                raise ValueError(
+                    f"Plot data must be 1-dimensional, but ys has {ys.ndim} dimensions"
+                )
+            else:
+                len_ys = ys.shape[0]
+        else:
+            len_ys = len(xs)
+
+        if len_xs != len_ys:
+            raise ValueError(
+                f"Plot data has inconsistent length: xs has length {len_xs}, ys has length {len_ys}"
+            )
+
 
 def _use_or_infer(
     limits: tuple[float, float] | None, data: Data
