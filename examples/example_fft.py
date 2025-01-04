@@ -9,6 +9,12 @@ inputs = pa.Inputs(
     (slider_freq := pa.Slider("Frequency", 20.0, 440.0, 10_000.0, log=True)),
     (slider_kernel_size := pa.IntSlider("Kernel size", 16, 64, 1024)),
     (radio_window := pa.Radio("Window", ["Box", "Hann", "Hamming"])),
+    (
+        radio_complex_mode := pa.Radio(
+            "Complex Mode",
+            ["complex", "real: cosine", "real: sine", "real: chained/convolved"],
+        )
+    ),
 )
 
 
@@ -24,6 +30,14 @@ def callback() -> pa.Outputs:
 
     phases = 2 * np.pi * freq * np.arange(n_kernel) / _SAMPLE_RATE
     kernel = np.cos(phases) + 1j * np.sin(phases)
+
+    if radio_complex_mode.value == "real: cosine":
+        kernel = np.real(kernel)
+    elif radio_complex_mode.value == "real: sine":
+        kernel = np.imag(kernel)
+    elif radio_complex_mode.value == "real: chained/convolved":
+        kernel = np.convolve(np.real(kernel), np.imag(kernel), mode="full")
+        n_kernel = len(kernel)
 
     window = None
     if radio_window.value == "Hann":
