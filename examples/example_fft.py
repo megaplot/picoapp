@@ -8,7 +8,11 @@ _SAMPLE_RATE = 22050
 inputs = pa.Inputs(
     (slider_freq := pa.Slider("Frequency", 20.0, 440.0, 10_000.0, log=True)),
     (slider_kernel_size := pa.IntSlider("Kernel size", 16, 64, 1024)),
-    (radio_window := pa.Radio("Window", ["Box", "Hann", "Hamming"])),
+    (
+        radio_window := pa.Radio(
+            "Window", ["Box", "Hann", "Hann (asym)", "Hamming", "Hamming (asym)"]
+        )
+    ),
     (
         radio_complex_mode := pa.Radio(
             "Complex Mode",
@@ -16,10 +20,6 @@ inputs = pa.Inputs(
         )
     ),
 )
-
-
-def create_sine(n: int, freq: float) -> np.ndarray:
-    return np.sin(2.0 * np.pi * freq * np.arange(n) / _SAMPLE_RATE)
 
 
 def callback() -> pa.Outputs:
@@ -42,8 +42,12 @@ def callback() -> pa.Outputs:
     window = None
     if radio_window.value == "Hann":
         window = np.hanning(n_kernel)
+    elif radio_window.value == "Hann (asym)":
+        window = np.hanning(n_kernel + 1)[:-1]
     elif radio_window.value == "Hamming":
         window = np.hamming(n_kernel)
+    elif radio_window.value == "Hamming (asym)":
+        window = np.hamming(n_kernel + 1)[:-1]
 
     if window is not None:
         kernel *= window

@@ -1,3 +1,4 @@
+mod color_utils;
 mod ui_audio;
 mod ui_checkbox;
 mod ui_outputs;

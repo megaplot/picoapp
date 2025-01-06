@@ -15,6 +15,15 @@ pub struct Plot {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MatrixPlot {
+    pub matrix: Vec<Vec<f64>>,
+    pub num_rows: u32,
+    pub num_cols: u32,
+    pub min_value: f64,
+    pub max_value: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Audio {
     pub data: Vec<f32>,
     pub sr: u32,
@@ -28,6 +37,7 @@ impl Audio {
 
 pub enum Output {
     Plot(Plot),
+    MatrixPlot(MatrixPlot),
     Audio(Audio),
 }
 
@@ -56,7 +66,7 @@ pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<Ca
         )?));
     } else {
         // Approximate interface of 'Reactive' (duck typing style). In principle it would be
-        // nice to be able to use the equivalent of `instance(cb_retrun, ReactiveBase)`. The
+        // nice to be able to use the equivalent of `instance(cb_return, ReactiveBase)`. The
         // challenge is how to obtain the reference to the `ReactiveBase` type. Options:
         // * Importing it from Python would add a weird reverse import direction.
         // * Passing the type itself in from Python may look a bit weird as well, but
@@ -78,33 +88,55 @@ pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<Ca
 pub fn parse_outputs(py: Python<'_>, outputs: PyObject) -> PyResult<Vec<Output>> {
     let output = outputs.bind(py);
     let mut results = Vec::new();
-    // TODO: This can be improved a lot. Most likely we could leverage the buffer
-    // protocol (or https://github.com/PyO3/rust-numpy) to make this zero copy?
     for object in output.iter()? {
         let object = object?;
-        if object.hasattr("xs")?
-            && object.hasattr("ys")?
-            && object.hasattr("x_limits")?
-            && object.hasattr("y_limits")?
-        {
-            let xs: Vec<f64> = object.getattr("xs")?.extract()?;
-            let ys: Vec<f64> = object.getattr("ys")?.extract()?;
-            let x_limits: (f64, f64) = object.getattr("x_limits")?.extract()?;
-            let y_limits: (f64, f64) = object.getattr("y_limits")?.extract()?;
-            results.push(Output::Plot(Plot {
-                xs,
-                ys,
-                x_limits: x_limits.0 as f32..x_limits.1 as f32,
-                y_limits: y_limits.0 as f32..y_limits.1 as f32,
-            }));
-        }
-        // TODO: Decide if this should use a nominal type system, or rather structural
-        // duck typing.
-        if object.get_type().name()? == "Audio" {
-            let data: Vec<f32> = object.getattr("data")?.extract()?;
-            let sr: u32 = object.getattr("sr")?.extract()?;
-            results.push(Output::Audio(Audio { data, sr }));
-        }
+        let output = parse_output(&object)?;
+        results.push(output);
     }
     Ok(results)
+}
+
+fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
+    // TODO: Decide if this should use a nominal type system, or rather structural
+    // duck typing. Currently its a pretty bad mix...
+    if object.hasattr("xs")?
+        && object.hasattr("ys")?
+        && object.hasattr("x_limits")?
+        && object.hasattr("y_limits")?
+    {
+        // TODO: This can be improved a lot. Most likely we could leverage the buffer
+        // protocol (or https://github.com/PyO3/rust-numpy) to make this zero copy?
+        let xs: Vec<f64> = object.getattr("xs")?.extract()?;
+        let ys: Vec<f64> = object.getattr("ys")?.extract()?;
+        let x_limits: (f64, f64) = object.getattr("x_limits")?.extract()?;
+        let y_limits: (f64, f64) = object.getattr("y_limits")?.extract()?;
+        Ok(Output::Plot(Plot {
+            xs,
+            ys,
+            x_limits: x_limits.0 as f32..x_limits.1 as f32,
+            y_limits: y_limits.0 as f32..y_limits.1 as f32,
+        }))
+    } else if object.get_type().name()? == "MatrixPlot" {
+        let matrix: Vec<Vec<f64>> = object.getattr("matrix")?.extract()?;
+        let num_rows: u32 = object.getattr("num_rows")?.extract()?;
+        let num_cols: u32 = object.getattr("num_cols")?.extract()?;
+        let min_value: f64 = object.getattr("min_value")?.extract()?;
+        let max_value: f64 = object.getattr("max_value")?.extract()?;
+        Ok(Output::MatrixPlot(MatrixPlot {
+            matrix,
+            num_rows,
+            num_cols,
+            min_value,
+            max_value,
+        }))
+    } else if object.get_type().name()? == "Audio" {
+        let data: Vec<f32> = object.getattr("data")?.extract()?;
+        let sr: u32 = object.getattr("sr")?.extract()?;
+        Ok(Output::Audio(Audio { data, sr }))
+    } else {
+        return Err(PyValueError::new_err(format!(
+            "Invalid output type: {:?}",
+            object.get_type().name()?
+        )));
+    }
 }

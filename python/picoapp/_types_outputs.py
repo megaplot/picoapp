@@ -48,6 +48,19 @@ class Plot:
             )
 
 
+class MatrixPlot:
+    def __init__(self, matrix: np.ndarray):
+        if matrix.ndim != 2:
+            raise ValueError(
+                f"MatrixPlot requires 2-dimension matrix, but matrix has {matrix.ndim} dimensions."
+            )
+        self.matrix = matrix
+        self.num_rows = matrix.shape[0]
+        self.num_cols = matrix.shape[1]
+        self.min_value = np.min(matrix)
+        self.max_value = np.max(matrix)
+
+
 def _use_or_infer(
     limits: tuple[float, float] | None, data: Data
 ) -> tuple[float, float]:
@@ -67,7 +80,7 @@ class Audio:
 # to introduce a base type, and some sort of interface, but since each type
 # basically needs an explicit implementation on the Rust side, a union type
 # seems more appropriate on first glance).
-Output = Plot | Audio
+Output = Plot | MatrixPlot | Audio
 
 
 class Outputs:
