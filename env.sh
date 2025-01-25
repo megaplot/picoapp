@@ -17,6 +17,6 @@ fi
 
 # Note that it is better to modify $PATH _after_ activating the venv, because
 # activating a venv can lead to a reset of $PATH if there is a previously
-# activated venv (which implicitly gets deactived, resetting $PATH to the
-# state it had when the old venv got activeted).
+# activated venv (which implicitly gets deactivated, resetting $PATH to the
+# state it had when the old venv got activated).
 export PATH="${PROJECT_ROOT}/scripts:${PATH}"

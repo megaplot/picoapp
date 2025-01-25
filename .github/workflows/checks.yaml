@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
 
@@ -57,7 +57,7 @@ jobs:
           . env.sh
           ./scripts/venv_create
           . env.sh
-          uv pip install -r requirements_dev.in -r requirements.in
+          ./scripts/venv_install
           uv pip freeze
 
       - name: "Install native package"
@@ -85,4 +85,13 @@ jobs:
         run: |
           . env.sh
           pytest
+
+      - name: "Integration test (minimal dependencies)"
+        run: |
+          uv venv ./tmp_venv
+          . ./tmp_venv/bin/activate
+          uv pip install .
+          uv pip freeze
+
+          python -c "import picoapp"
 

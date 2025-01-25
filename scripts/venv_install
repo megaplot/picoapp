@@ -16,7 +16,7 @@ fi
 cd "$PROJECT_ROOT"
 
 # Normally we should run in a sourced env anyway, but it probably doesn't hurt
-# to guarantuee we are in the proper venv.
+# to guarantee we are in the proper venv.
 . "$VENV_DIR"/bin/activate
 
 uv pip install -r requirements.txt -e . --no-deps
