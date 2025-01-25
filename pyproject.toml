@@ -10,10 +10,17 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dynamic = ["version", "dependencies"]
-
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements.in"] }
+dynamic = ["version"]
+# Unfortunately maturin does not support dynamic dependencies yet:
+# https://github.com/PyO3/maturin/issues/1537
+dependencies = [
+    "numpy",
+]
+# Eventually something like the following should work:
+# dynamic = ["version", "dependencies"]
+#
+# [tool.maturin.dynamic]
+# dependencies = { file = ["requirements.in"] }
 
 
 [tool.maturin]
