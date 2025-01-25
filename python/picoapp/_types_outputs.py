@@ -76,11 +76,45 @@ class Audio:
     sr: int
 
 
+@dataclass
+class Image:
+    data: np.ndarray
+    width: int
+    height: int
+
+    @staticmethod
+    def from_3d_array(data: np.ndarray) -> Image:
+        if data.ndim != 3:
+            raise ValueError(
+                f"Image data must be 3-dimensional, but has {data.ndim} dimensions."
+            )
+        if data.shape[-1] != 4:
+            raise ValueError(
+                f"Last dimension of image data have a size of 4, representing rgba data, "
+                f"but has size of {data.shape[-1]}."
+            )
+        return Image(
+            data=data.flatten(),
+            width=data.shape[1],
+            height=data.shape[0],
+        )
+
+    def __post_init__(self) -> None:
+        if self.data.ndim != 1:
+            raise ValueError(
+                f"Image data must be flattened to 1-dim, but has {self.data.ndim} dimensions."
+            )
+        if self.data.dtype != np.uint8:
+            raise ValueError(
+                f"Image data must be of type np.uint8, but is {self.data.dtype}."
+            )
+
+
 # Union type of all supported outputs (it remains to be seen if we rather want
 # to introduce a base type, and some sort of interface, but since each type
 # basically needs an explicit implementation on the Rust side, a union type
 # seems more appropriate on first glance).
-Output = Plot | MatrixPlot | Audio
+Output = Plot | MatrixPlot | Audio | Image
 
 
 class Outputs:

@@ -4,6 +4,7 @@ use cushy::widget::WidgetList;
 use crate::outputs::Output;
 
 use super::ui_audio::audio_player_widget;
+use super::ui_image::image_widget;
 use super::ui_plots::{matrix_plot_widget, plot_widget};
 
 pub fn outputs_widget(outputs: &[Output]) -> impl MakeWidget {
@@ -23,6 +24,7 @@ pub fn outputs_widget(outputs: &[Output]) -> impl MakeWidget {
                 // Why does horizontal alignment mess up vertical alignment?
                 // .expand_horizontally()
                 .make_widget(),
+            Output::Image(image) => image_widget(image).contain().make_widget(),
         })
         .collect::<WidgetList>()
         .into_rows()

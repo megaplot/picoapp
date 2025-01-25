@@ -35,10 +35,18 @@ impl Audio {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Image {
+    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
 pub enum Output {
     Plot(Plot),
     MatrixPlot(MatrixPlot),
     Audio(Audio),
+    Image(Image),
 }
 
 pub enum CallbackReturn {
@@ -133,6 +141,15 @@ fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
         let data: Vec<f32> = object.getattr("data")?.extract()?;
         let sr: u32 = object.getattr("sr")?.extract()?;
         Ok(Output::Audio(Audio { data, sr }))
+    } else if object.get_type().name()? == "Image" {
+        let data: Vec<u8> = object.getattr("data")?.extract()?;
+        let width: u32 = object.getattr("width")?.extract()?;
+        let height: u32 = object.getattr("height")?.extract()?;
+        Ok(Output::Image(Image {
+            data,
+            width,
+            height,
+        }))
     } else {
         return Err(PyValueError::new_err(format!(
             "Invalid output type: {:?}",
