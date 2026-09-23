@@ -3,7 +3,7 @@ use std::ops::Range;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use crate::inputs::Inputs;
+use crate::inputs::{parse_inputs, InputBinding, InputSpec};
 use crate::utils::Callback;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,47 +49,76 @@ pub enum Output {
     Image(Image),
 }
 
-pub enum CallbackReturn {
+pub enum LevelResult {
     Outputs(Vec<Output>),
-    Inputs(Inputs, Callback),
+    Nested {
+        specs: Vec<InputSpec>,
+        bindings: Vec<InputBinding>,
+        callback: Callback,
+    },
+    Error(String),
+    Discarded,
 }
 
-impl PartialEq for CallbackReturn {
-    fn eq(&self, _other: &Self) -> bool {
-        // PartialEq is need for setting a `Dynamic`. In this use case, we probably want
-        // to assume that each invocation of the callback returns a different result (which
-        // is probably true any if an `PyFunction` is involved). Even if the returned value
-        // would be the same, there is no real harm in re-updating the UI. In terms of performance
-        // the evaluation of the callback itself probably outweighs the UI update anyway.
-        false
+/// Formats a PyErr's message and traceback for display in the UI.
+///
+/// `PyErr::display` (pyo3 0.22) only prints to stderr and returns `()`, and
+/// `PyErr`'s `Display` impl gives just "ExceptionType: message" with no
+/// traceback, so the traceback is formatted separately via `PyTraceback::format`
+/// and appended when present.
+pub fn format_traceback(py: Python<'_>, err: &PyErr) -> String {
+    let message = err.to_string();
+    match err.traceback_bound(py).and_then(|tb| tb.format().ok()) {
+        Some(formatted) => format!("{message}\n\n{formatted}"),
+        None => message,
     }
 }
 
-pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<CallbackReturn> {
+/// Parses a callback's return value. Never returns a `PyErr` to the caller:
+/// any parsing failure (including the callback itself having raised) is
+/// folded into `LevelResult::Error` so the worker has one uniform result
+/// shape.
+pub fn parse_level_result(py: Python<'_>, cb_return: PyResult<PyObject>) -> LevelResult {
+    let cb_return = match cb_return {
+        Ok(v) => v,
+        Err(err) => return LevelResult::Error(format_traceback(py, &err)),
+    };
+
+    match parse_level_result_inner(py, cb_return) {
+        Ok(result) => result,
+        Err(err) => LevelResult::Error(format_traceback(py, &err)),
+    }
+}
+
+fn parse_level_result_inner(py: Python<'_>, cb_return: PyObject) -> PyResult<LevelResult> {
     let cb_return = cb_return.bind(py);
     if cb_return.get_type().name()? == "Outputs" {
-        return Ok(CallbackReturn::Outputs(parse_outputs(
+        Ok(LevelResult::Outputs(parse_outputs(
             py,
             cb_return.getattr("outputs")?.into(),
-        )?));
-    } else {
-        // Approximate interface of 'Reactive' (duck typing style). In principle it would be
-        // nice to be able to use the equivalent of `instance(cb_return, ReactiveBase)`. The
-        // challenge is how to obtain the reference to the `ReactiveBase` type. Options:
-        // * Importing it from Python would add a weird reverse import direction.
-        // * Passing the type itself in from Python may look a bit weird as well, but
-        //   perhaps this is the way to go, especially since we could leverage that
-        //   pattern in other places as well (where we want nominal typing).
-        if cb_return.is_callable() && cb_return.hasattr("inputs")? {
-            let inputs = cb_return.getattr("inputs")?.getattr("inputs")?.extract()?;
-            let callback: Callback = cb_return.getattr("__call__")?.extract()?;
-            return Ok(CallbackReturn::Inputs(inputs, callback));
-        } else {
-            return Err(PyValueError::new_err(format!(
-                "Invalid callback return type: {:?}",
-                cb_return.get_type().name()?
-            )));
+        )?))
+    } else if cb_return.is_callable() && cb_return.hasattr("inputs")? {
+        // Approximate interface of `ReactiveBase` (duck typing, see mod-level
+        // note in the original implementation for why nominal typing isn't
+        // used here).
+        let raw_inputs = cb_return.getattr("inputs")?.getattr("inputs")?;
+        let raw_inputs = raw_inputs.downcast::<pyo3::types::PySequence>()?;
+        let mut objs = Vec::new();
+        for item in raw_inputs.iter()? {
+            objs.push(item?);
         }
+        let (specs, bindings) = parse_inputs(&objs)?;
+        let callback: Callback = cb_return.getattr("__call__")?.extract()?;
+        Ok(LevelResult::Nested {
+            specs,
+            bindings,
+            callback,
+        })
+    } else {
+        Err(PyValueError::new_err(format!(
+            "Invalid callback return type: {:?}",
+            cb_return.get_type().name()?
+        )))
     }
 }
 
