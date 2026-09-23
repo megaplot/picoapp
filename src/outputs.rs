@@ -37,9 +37,21 @@ impl Audio {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Image {
+    /// Pixel data in **BGRA** order (swizzled from the RGBA the Python side
+    /// produces), ready for `gpui`'s `RenderImage`.
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
+}
+
+/// Swizzles a flat RGBA byte buffer to BGRA in place semantics (returns a
+/// new Vec), which is the pixel format gpui's `RenderImage` expects.
+pub fn rgba_to_bgra(rgba: &[u8]) -> Vec<u8> {
+    let mut out = rgba.to_vec();
+    for px in out.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    out
 }
 
 pub enum Output {
@@ -175,7 +187,7 @@ fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
         let width: u32 = object.getattr("width")?.extract()?;
         let height: u32 = object.getattr("height")?.extract()?;
         Ok(Output::Image(Image {
-            data,
+            data: rgba_to_bgra(&data),
             width,
             height,
         }))
@@ -184,5 +196,25 @@ fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
             "Invalid output type: {:?}",
             object.get_type().name()?
         )));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_output_image_field_is_bgra_after_swizzle() {
+        // 1x1 red pixel, alpha 128: RGBA = [255, 0, 0, 128]
+        let rgba = vec![255u8, 0, 0, 128];
+        let bgra = rgba_to_bgra(&rgba);
+        assert_eq!(bgra, vec![0, 0, 255, 128]);
+    }
+
+    #[test]
+    fn swizzle_handles_multiple_pixels() {
+        let rgba = vec![10, 20, 30, 40, 50, 60, 70, 80];
+        let bgra = rgba_to_bgra(&rgba);
+        assert_eq!(bgra, vec![30, 20, 10, 40, 70, 60, 50, 80]);
     }
 }

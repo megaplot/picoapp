@@ -1,5 +1,6 @@
 mod app;
 mod color_utils;
+mod image;
 mod line_plot;
 mod matrix_plot;
 mod run_scheduler;
