@@ -168,6 +168,29 @@ pub fn spawn_root(
     )
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_job_for_ui_returns_discarded_for_dropped_level() {
+        let mut registry = Registry::new();
+        // No easy way to build a real Callback/InputBinding without a live
+        // Python interpreter; instead, exercise drop_level directly against a
+        // LevelId that was never registered, which is exactly the state a
+        // just-dropped level is in from run_job_for_ui's point of view.
+        let level = LevelId(0);
+        // No `Python::with_gil` available outside `pyo3::prepare_freethreaded_python()`
+        // in a plain `cargo test`; this test only needs `run_job`'s early-return
+        // branch, which doesn't touch Python at all when the level is absent.
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            let result = registry.run_job_for_ui(py, level, &[]);
+            assert!(matches!(result, UiLevelResult::Discarded));
+        });
+    }
+}
+
 fn worker_loop(mut registry: Registry, receiver: mpsc::Receiver<Job>) {
     while let Ok(job) = receiver.recv() {
         match job {

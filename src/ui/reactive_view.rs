@@ -40,6 +40,7 @@ pub struct ReactiveView {
     scheduler: RunScheduler,
     widgets: Vec<InputWidgetState>,
     outputs: Vec<Output>,
+    child: Option<Entity<ReactiveView>>,
     awaiting: usize,
     busy: bool,
     error: Option<String>,
@@ -47,12 +48,14 @@ pub struct ReactiveView {
 }
 
 impl ReactiveView {
-    pub fn new(
+    /// Builds a view's widgets and initial scheduler state, with empty
+    /// outputs/error and no child — shared by `new` (the root, which then
+    /// applies its already-computed first result) and `Nested` handling in
+    /// `apply_result` (a fresh child, whose first result hasn't run yet).
+    fn new_child(
         level: LevelId,
         specs: Vec<InputSpec>,
-        initial: UiLevelResult,
         worker: Arc<WorkerHandle>,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let initial_values: Vec<InputValue> = specs
@@ -104,23 +107,34 @@ impl ReactiveView {
             }
         }
 
-        let mut view = ReactiveView {
+        ReactiveView {
             level,
             worker,
             scheduler: RunScheduler::new(initial_values),
             widgets,
             outputs: Vec::new(),
+            child: None,
             awaiting: 0,
             busy: false,
             error: None,
             _subscriptions: subscriptions,
-        };
-        // Applies the root's first computed result (Outputs or Error) the
-        // same way a later dispatch's result would be applied, so a
-        // callback that raises on its very first invocation shows the
-        // error immediately instead of silently starting with no output.
-        // Nested is handled starting Task 17.
-        view.apply_result(initial);
+        }
+    }
+
+    pub fn new(
+        level: LevelId,
+        specs: Vec<InputSpec>,
+        initial: UiLevelResult,
+        worker: Arc<WorkerHandle>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut view = Self::new_child(level, specs, worker, cx);
+        // Applies the root's first computed result (Outputs/Nested/Error)
+        // the same way a later dispatch's result would be applied, so a
+        // callback that raises (or returns a nested ReactiveBase) on its
+        // very first invocation behaves identically to a later one.
+        view.apply_result(initial, cx);
         view
     }
 
@@ -163,7 +177,7 @@ impl ReactiveView {
             let _ = this.update(cx, |this, cx| {
                 this.awaiting -= 1;
                 this.busy = this.awaiting > 0;
-                this.apply_result(result);
+                this.apply_result(result, cx);
                 let followup = this.scheduler.on_result();
                 cx.notify();
                 if let Some(values) = followup {
@@ -174,18 +188,49 @@ impl ReactiveView {
         .detach();
     }
 
-    fn apply_result(&mut self, result: UiLevelResult) {
+    fn apply_result(&mut self, result: UiLevelResult, cx: &mut Context<Self>) {
         match result {
             UiLevelResult::Outputs(outputs) => {
                 self.outputs = outputs;
                 self.error = None;
+                if let Some(old_child) = self.child.take() {
+                    self.worker.send(Job::Drop {
+                        level: old_child.read(cx).level,
+                    });
+                }
+            }
+            UiLevelResult::Nested { level, specs } => {
+                self.error = None;
+                if let Some(old_child) = self.child.take() {
+                    self.worker.send(Job::Drop {
+                        level: old_child.read(cx).level,
+                    });
+                }
+                // A nested level's initial values come straight from its
+                // specs' init values (mirrors run_ui's root-level bootstrap
+                // in Task 6/15); its first Outputs is dispatched right away.
+                let initial_values: Vec<InputValue> = specs
+                    .iter()
+                    .map(|spec| match spec {
+                        InputSpec::Slider(s) => InputValue::F64(s.init),
+                        InputSpec::IntSlider(s) => InputValue::I64(s.init),
+                        InputSpec::Checkbox(s) => InputValue::Bool(s.init),
+                        InputSpec::Radio(s) => InputValue::Index(s.init_index),
+                    })
+                    .collect();
+                let worker = self.worker.clone();
+                let child = cx.new(|cx| {
+                    let mut view = ReactiveView::new_child(level, specs, worker, cx);
+                    view.dispatch(initial_values, cx);
+                    view
+                });
+                self.child = Some(child);
             }
             UiLevelResult::Error(msg) => {
                 self.error = Some(msg);
                 // Keep self.outputs as-is: previous outputs stay visible.
             }
-            // Nested handled in Task 17.
-            UiLevelResult::Nested { .. } | UiLevelResult::Discarded => {}
+            UiLevelResult::Discarded => {}
         }
     }
 
@@ -246,26 +291,36 @@ impl Render for ReactiveView {
                 .into_any_element()
         });
 
-        let content = div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .when(self.busy, |el| el.opacity(0.5))
-            .children(error_block)
-            .children(self.outputs.iter().map(|output| match output {
-                Output::Plot(plot) => LinePlot { data: plot.clone() }.into_any_element(),
-                Output::MatrixPlot(matrix) => {
-                    MatrixPlotView { data: matrix.clone() }.into_any_element()
-                }
-                Output::Image(image) => {
-                    let render_image = crate::ui::image::build_render_image(image);
-                    crate::ui::image::image_element(image, render_image).into_any_element()
-                }
-                // Audio wired up in Task 18.
-                Output::Audio(_) => div().child("audio (not yet wired)").into_any_element(),
-            }));
+        let content_area = if let Some(child) = &self.child {
+            div().flex_1().child(child.clone()).into_any_element()
+        } else {
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap_4()
+                .when(self.busy, |el| el.opacity(0.5))
+                .children(error_block)
+                .children(self.outputs.iter().map(|output| match output {
+                    Output::Plot(plot) => LinePlot { data: plot.clone() }.into_any_element(),
+                    Output::MatrixPlot(matrix) => {
+                        MatrixPlotView { data: matrix.clone() }.into_any_element()
+                    }
+                    Output::Image(image) => {
+                        let render_image = crate::ui::image::build_render_image(image);
+                        crate::ui::image::image_element(image, render_image).into_any_element()
+                    }
+                    // Audio wired up in Task 18.
+                    Output::Audio(_) => div().child("audio (not yet wired)").into_any_element(),
+                }))
+                .into_any_element()
+        };
 
-        div().flex().flex_row().size_full().child(sidebar).child(content)
+        div()
+            .flex()
+            .flex_row()
+            .size_full()
+            .child(sidebar)
+            .child(content_area)
     }
 }
