@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use gpui_kit::gpui::prelude::FluentBuilder;
 use gpui_kit::{
     div, px, AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Window,
 };
@@ -39,6 +40,9 @@ pub struct ReactiveView {
     scheduler: RunScheduler,
     widgets: Vec<InputWidgetState>,
     outputs: Vec<Output>,
+    awaiting: usize,
+    busy: bool,
+    error: Option<String>,
     _subscriptions: Vec<gpui_kit::Subscription>,
 }
 
@@ -100,22 +104,24 @@ impl ReactiveView {
             }
         }
 
-        let outputs = match initial {
-            UiLevelResult::Outputs(outputs) => outputs,
-            // Nested/Error/Discarded handled starting Task 16/17; for now
-            // treat them as "no outputs yet" so this task's flat case
-            // (example_1.py etc., which always return Outputs) works.
-            _ => Vec::new(),
-        };
-
-        ReactiveView {
+        let mut view = ReactiveView {
             level,
             worker,
             scheduler: RunScheduler::new(initial_values),
             widgets,
-            outputs,
+            outputs: Vec::new(),
+            awaiting: 0,
+            busy: false,
+            error: None,
             _subscriptions: subscriptions,
-        }
+        };
+        // Applies the root's first computed result (Outputs or Error) the
+        // same way a later dispatch's result would be applied, so a
+        // callback that raises on its very first invocation shows the
+        // error immediately instead of silently starting with no output.
+        // Nested is handled starting Task 17.
+        view.apply_result(initial);
+        view
     }
 
     fn dispatch(&mut self, values: Vec<InputValue>, cx: &mut Context<Self>) {
@@ -125,17 +131,38 @@ impl ReactiveView {
             values,
             reply: tx,
         });
+
+        // Only show the busy indicator if the job is still running after
+        // ~150ms, so fast callbacks don't flicker.
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(150))
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.awaiting > 0 {
+                    this.busy = true;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+
+        self.awaiting += 1;
         cx.spawn(async move |this, cx| {
             let Ok(result) = rx.await else {
                 // Worker panicked mid-job: pending reply never arrives as
                 // Ok. Show "worker terminated" instead of hanging.
                 let _ = this.update(cx, |this, cx| {
-                    this.outputs.clear();
+                    this.awaiting -= 1;
+                    this.busy = this.awaiting > 0;
+                    this.error = Some("worker terminated".to_string());
                     cx.notify();
                 });
                 return;
             };
             let _ = this.update(cx, |this, cx| {
+                this.awaiting -= 1;
+                this.busy = this.awaiting > 0;
                 this.apply_result(result);
                 let followup = this.scheduler.on_result();
                 cx.notify();
@@ -149,9 +176,16 @@ impl ReactiveView {
 
     fn apply_result(&mut self, result: UiLevelResult) {
         match result {
-            UiLevelResult::Outputs(outputs) => self.outputs = outputs,
-            // Nested/Error handled in Tasks 16-17.
-            UiLevelResult::Nested { .. } | UiLevelResult::Error(_) | UiLevelResult::Discarded => {}
+            UiLevelResult::Outputs(outputs) => {
+                self.outputs = outputs;
+                self.error = None;
+            }
+            UiLevelResult::Error(msg) => {
+                self.error = Some(msg);
+                // Keep self.outputs as-is: previous outputs stay visible.
+            }
+            // Nested handled in Task 17.
+            UiLevelResult::Nested { .. } | UiLevelResult::Discarded => {}
         }
     }
 
@@ -204,8 +238,22 @@ impl Render for ReactiveView {
                 }
             }));
 
-        let content = div().flex_1().flex().flex_col().gap_4().children(
-            self.outputs.iter().map(|output| match output {
+        let error_block = self.error.as_ref().map(|msg| {
+            div()
+                .p_2()
+                .text_color(gpui_kit::red())
+                .child(msg.clone())
+                .into_any_element()
+        });
+
+        let content = div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .when(self.busy, |el| el.opacity(0.5))
+            .children(error_block)
+            .children(self.outputs.iter().map(|output| match output {
                 Output::Plot(plot) => LinePlot { data: plot.clone() }.into_any_element(),
                 Output::MatrixPlot(matrix) => {
                     MatrixPlotView { data: matrix.clone() }.into_any_element()
@@ -216,8 +264,7 @@ impl Render for ReactiveView {
                 }
                 // Audio wired up in Task 18.
                 Output::Audio(_) => div().child("audio (not yet wired)").into_any_element(),
-            }),
-        );
+            }));
 
         div().flex().flex_row().size_full().child(sidebar).child(content)
     }
