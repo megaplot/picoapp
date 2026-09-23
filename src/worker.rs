@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::mpsc;
+use std::thread::JoinHandle;
 
 use pyo3::prelude::*;
 
@@ -97,4 +99,94 @@ impl Registry {
             LevelResult::Discarded => UiLevelResult::Discarded,
         }
     }
+}
+
+pub enum Job {
+    Run {
+        level: LevelId,
+        values: Vec<InputValue>,
+        reply: futures::channel::oneshot::Sender<UiLevelResult>,
+    },
+    Drop {
+        level: LevelId,
+    },
+}
+
+pub struct WorkerHandle {
+    sender: mpsc::Sender<Job>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl WorkerHandle {
+    pub fn send(&self, job: Job) {
+        // The receiving end only goes away when the worker thread itself
+        // panicked; in that case the Job is simply dropped, and any
+        // `oneshot::Sender` inside it drops too, which resolves the
+        // matching receiver to `Canceled` (see ui/reactive_view.rs).
+        let _ = self.sender.send(job);
+    }
+}
+
+impl Drop for WorkerHandle {
+    fn drop(&mut self) {
+        // Dropping `sender` (by not cloning it elsewhere past this point)
+        // closes the channel; the worker loop's `recv()` then returns Err
+        // and the thread exits. Take the JoinHandle so this can only run
+        // once.
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// Spawns the worker thread, registers the root level and runs its first
+/// job synchronously (blocking this call) so callers get the initial
+/// output without a separate round trip.
+pub fn spawn_root(
+    py: Python<'_>,
+    bindings: Vec<InputBinding>,
+    callback: Callback,
+    initial_values: Vec<InputValue>,
+) -> (WorkerHandle, LevelId, UiLevelResult) {
+    let mut registry = Registry::new();
+    let root = registry.register(bindings, callback);
+    let initial_result = registry.run_job_for_ui(py, root, &initial_values);
+
+    let (sender, receiver) = mpsc::channel::<Job>();
+    let thread = std::thread::Builder::new()
+        .name("picoapp-worker".to_string())
+        .spawn(move || worker_loop(registry, receiver))
+        .expect("failed to spawn picoapp-worker thread");
+
+    (
+        WorkerHandle {
+            sender,
+            thread: Some(thread),
+        },
+        root,
+        initial_result,
+    )
+}
+
+fn worker_loop(mut registry: Registry, receiver: mpsc::Receiver<Job>) {
+    while let Ok(job) = receiver.recv() {
+        match job {
+            Job::Run {
+                level,
+                values,
+                reply,
+            } => {
+                let result = Python::with_gil(|py| registry.run_job_for_ui(py, level, &values));
+                // Ignore a failed send: it only means the UI dropped the
+                // receiver (view released while its job was in flight).
+                let _ = reply.send(result);
+            }
+            Job::Drop { level } => {
+                Python::with_gil(|_py| registry.drop_level(level));
+            }
+        }
+    }
+    // Channel closed: drop the registry under the GIL so every Py handle
+    // is released correctly.
+    Python::with_gil(|_py| drop(registry));
 }

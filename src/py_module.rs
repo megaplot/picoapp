@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PySequence;
 
-use crate::inputs::{Input, Inputs};
+use crate::inputs::Input;
 use crate::ui::run_ui;
 use crate::utils::Callback;
 use crate::worker::Registry;
@@ -9,9 +9,12 @@ use crate::worker::Registry;
 #[pyfunction]
 fn run(inputs: &Bound<'_, PySequence>, callback: &Bound<'_, PyAny>) -> PyResult<()> {
     let py = inputs.py();
-    let inputs: Inputs = inputs.extract()?;
+    let mut objs = Vec::new();
+    for item in inputs.iter()? {
+        objs.push(item?);
+    }
     let callback: Callback = callback.extract()?;
-    run_ui(py, &inputs, callback)?;
+    run_ui(py, &objs, callback)?;
     Ok(())
 }
 
