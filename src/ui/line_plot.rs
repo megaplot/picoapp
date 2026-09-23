@@ -4,7 +4,7 @@ use gpui_kit::component::plot::{
     AxisText, Grid, IntoPlot, Plot, PlotAxis,
 };
 use gpui_kit::component::ActiveTheme;
-use gpui_kit::{px, App, Bounds, ElementId, Pixels, Window};
+use gpui_kit::{px, App, Bounds, ContentMask, ElementId, Pixels, Window};
 
 use crate::outputs::Plot as PlotData;
 use crate::ui::ticks::nice_ticks;
@@ -46,9 +46,12 @@ impl Plot for LinePlot {
             .dash_array(&[px(4.), px(2.)])
             .paint(&bounds, window);
 
-        let mut axis = PlotAxis::new().stroke(border).x(px(height));
+        let mut axis = PlotAxis::new().stroke(border).x(px(height)).y(px(0.));
         axis = axis.x_label(x_ticks.iter().filter_map(|t| {
             x_scale.tick(t).map(|tick| AxisText::new(format!("{t:.3}").trim_end_matches('0').trim_end_matches('.').to_string(), px(tick), muted))
+        }));
+        axis = axis.y_label(y_ticks.iter().filter_map(|t| {
+            y_scale.tick(t).map(|tick| AxisText::new(format!("{t:.3}").trim_end_matches('0').trim_end_matches('.').to_string(), px(tick), muted))
         }));
         axis.paint(&bounds, window, cx);
 
@@ -61,7 +64,12 @@ impl Plot for LinePlot {
             .y(move |&i| y_scale.tick(&ys[i]))
             .stroke(cx.theme().chart_2)
             .stroke_width(px(2.));
-        line.paint(&bounds, window);
+        // Clip to the plot's own bounds: without this, a line whose data
+        // falls outside x_limits/y_limits draws over the axis labels and
+        // any neighboring output instead of being cut off at the frame.
+        window.with_content_mask(Some(ContentMask { bounds }), |window| {
+            line.paint(&bounds, window);
+        });
     }
 
     fn id(&self) -> Option<ElementId> {

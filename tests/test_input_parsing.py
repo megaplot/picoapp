@@ -68,3 +68,16 @@ def test_worker_job_returns_error_on_exception():
     result = _run_worker_job([checkbox], callback, [True])
     assert result.startswith("Error(")
     assert "boom" in result
+
+
+def test_worker_job_prints_exception_traceback_to_stderr(capfd):
+    checkbox = pa.Checkbox("c")
+
+    def callback():
+        raise ValueError("boom")
+
+    _run_worker_job([checkbox], callback, [True])
+
+    captured = capfd.readouterr()
+    assert "boom" in captured.err
+    assert "Traceback" in captured.err

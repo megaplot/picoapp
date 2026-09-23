@@ -42,13 +42,23 @@ impl Plot for MatrixPlotView {
         }
 
         let x_ticks = nice_ticks(0.0, cols as f64, 6);
+        let y_ticks = nice_ticks(0.0, rows as f64, 6);
         let border = cx.theme().border;
         let muted = cx.theme().muted_foreground;
-        let axis = PlotAxis::new().stroke(border).x(px(height)).x_label(
-            x_ticks
-                .iter()
-                .map(|t| AxisText::new(format!("{t:.0}"), px(*t as f32 / cols * width), muted)),
-        );
+        let axis = PlotAxis::new()
+            .stroke(border)
+            .x(px(height))
+            .y(px(0.))
+            .x_label(
+                x_ticks
+                    .iter()
+                    .map(|t| AxisText::new(format!("{t:.0}"), px(*t as f32 / cols * width), muted)),
+            )
+            .y_label(
+                y_ticks
+                    .iter()
+                    .map(|t| AxisText::new(format!("{t:.0}"), px(*t as f32 / rows * height), muted)),
+            );
         axis.paint(&bounds, window, cx);
     }
 

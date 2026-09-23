@@ -72,7 +72,10 @@ pub enum LevelResult {
     Discarded,
 }
 
-/// Formats a PyErr's message and traceback for display in the UI.
+/// Formats a PyErr's message and traceback for display in the UI, and also
+/// prints it to stderr (matching the previous cushy-based behavior, so a
+/// callback exception is never silent for someone running from a terminal,
+/// even while the UI also shows it).
 ///
 /// `PyErr::display` (pyo3 0.22) only prints to stderr and returns `()`, and
 /// `PyErr`'s `Display` impl gives just "ExceptionType: message" with no
@@ -80,8 +83,16 @@ pub enum LevelResult {
 /// and appended when present.
 pub fn format_traceback(py: Python<'_>, err: &PyErr) -> String {
     let message = err.to_string();
-    match err.traceback_bound(py).and_then(|tb| tb.format().ok()) {
-        Some(formatted) => format!("{message}\n\n{formatted}"),
+    let frames = err.traceback_bound(py).and_then(|tb| tb.format().ok());
+
+    // Python's own convention: frames first, then the exception line.
+    match &frames {
+        Some(frames) => eprintln!("Traceback (most recent call last):\n{frames}{message}"),
+        None => eprintln!("{message}"),
+    }
+
+    match frames {
+        Some(frames) => format!("{message}\n\n{frames}"),
         None => message,
     }
 }

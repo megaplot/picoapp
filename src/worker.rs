@@ -113,7 +113,12 @@ pub enum Job {
 }
 
 pub struct WorkerHandle {
-    sender: mpsc::Sender<Job>,
+    // `Option` so `Drop` can explicitly drop the sender (closing the
+    // channel) *before* joining the thread, rather than relying on Rust's
+    // automatic field drop order, which only runs after `Drop::drop`
+    // returns — too late, since the join inside it would block forever
+    // waiting for a channel that hasn't closed yet.
+    sender: Option<mpsc::Sender<Job>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -123,34 +128,31 @@ impl WorkerHandle {
         // panicked; in that case the Job is simply dropped, and any
         // `oneshot::Sender` inside it drops too, which resolves the
         // matching receiver to `Canceled` (see ui/reactive_view.rs).
-        let _ = self.sender.send(job);
+        if let Some(sender) = &self.sender {
+            let _ = sender.send(job);
+        }
     }
 }
 
 impl Drop for WorkerHandle {
     fn drop(&mut self) {
-        // Dropping `sender` (by not cloning it elsewhere past this point)
-        // closes the channel; the worker loop's `recv()` then returns Err
-        // and the thread exits. Take the JoinHandle so this can only run
-        // once.
+        // Drop the sender first so the worker loop's `recv()` returns Err
+        // and the thread can exit; only then join it.
+        self.sender.take();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
     }
 }
 
-/// Spawns the worker thread, registers the root level and runs its first
-/// job synchronously (blocking this call) so callers get the initial
-/// output without a separate round trip.
-pub fn spawn_root(
-    py: Python<'_>,
-    bindings: Vec<InputBinding>,
-    callback: Callback,
-    initial_values: Vec<InputValue>,
-) -> (WorkerHandle, LevelId, UiLevelResult) {
+/// Spawns the worker thread and registers the root level. Does not run any
+/// job synchronously: the caller dispatches the root's first job through
+/// the same channel as every later job (see `ReactiveView::new`), so every
+/// Python call — including the very first — runs on the dedicated worker
+/// thread, and the window can appear before that first call finishes.
+pub fn spawn(bindings: Vec<InputBinding>, callback: Callback) -> (WorkerHandle, LevelId) {
     let mut registry = Registry::new();
     let root = registry.register(bindings, callback);
-    let initial_result = registry.run_job_for_ui(py, root, &initial_values);
 
     let (sender, receiver) = mpsc::channel::<Job>();
     let thread = std::thread::Builder::new()
@@ -160,11 +162,10 @@ pub fn spawn_root(
 
     (
         WorkerHandle {
-            sender,
+            sender: Some(sender),
             thread: Some(thread),
         },
         root,
-        initial_result,
     )
 }
 
@@ -188,6 +189,37 @@ mod tests {
             let result = registry.run_job_for_ui(py, level, &[]);
             assert!(matches!(result, UiLevelResult::Discarded));
         });
+    }
+
+    /// Regression test for a deadlock: `WorkerHandle::drop` used to call
+    /// `thread.join()` while `self.sender` was still alive (a struct's
+    /// fields are only dropped *after* its custom `Drop::drop` body
+    /// returns), so the worker's `recv()` never saw a closed channel and
+    /// the join blocked forever. Runs the drop on a background thread and
+    /// polls a flag with a bounded timeout instead of joining directly, so
+    /// a regression here fails this test instead of hanging the suite.
+    #[test]
+    fn dropping_the_last_worker_handle_does_not_hang() {
+        pyo3::prepare_freethreaded_python();
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done_writer = done.clone();
+        std::thread::spawn(move || {
+            let (worker, _root) = Python::with_gil(|py| {
+                let callback: Callback = py.eval_bound("lambda: None", None, None).unwrap().extract().unwrap();
+                spawn(vec![], callback)
+            });
+            drop(worker);
+            done_writer.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        let start = std::time::Instant::now();
+        while !done.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(5),
+                "dropping WorkerHandle did not complete within 5s (deadlock regression)"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 }
 

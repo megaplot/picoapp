@@ -22,6 +22,16 @@ impl RunScheduler {
         &self.values
     }
 
+    /// Marks the level's very first job (auto-triggered on construction,
+    /// not from a UI change) as in flight, and returns the values to run it
+    /// with. Without this, a change arriving while that first job is still
+    /// running would see `in_flight == false` and fire a second, concurrent
+    /// job instead of coalescing into the pending set.
+    pub fn start(&mut self) -> Vec<InputValue> {
+        self.in_flight = true;
+        self.values.clone()
+    }
+
     /// Records a UI-driven change to input `index`. Returns the full value
     /// vector to dispatch now if nothing is in flight, or `None` if the
     /// change was folded into the pending set for when the in-flight job
@@ -112,5 +122,17 @@ mod tests {
         assert_eq!(s.on_change(1, f(9.0)), Some(vec![f(0.0), f(9.0)]));
         assert_eq!(s.on_change(0, f(5.0)), None);
         assert_eq!(s.on_result(), Some(vec![f(5.0), f(9.0)]));
+    }
+
+    #[test]
+    fn start_marks_in_flight_so_a_change_during_it_coalesces() {
+        let mut s = RunScheduler::new(vec![f(0.0)]);
+        let dispatched = s.start();
+        assert_eq!(dispatched, vec![f(0.0)]);
+
+        // A change arriving while the level's very first (auto-triggered)
+        // job is running must coalesce, not fire a second concurrent job.
+        assert_eq!(s.on_change(0, f(1.0)), None);
+        assert_eq!(s.on_result(), Some(vec![f(1.0)]));
     }
 }

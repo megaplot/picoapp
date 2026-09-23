@@ -73,15 +73,28 @@ pub struct AudioPlayer {
 }
 
 impl AudioPlayer {
-    pub fn new(audio: Audio, cx: &mut Context<Self>) -> Self {
+    pub fn new(audio: Audio, _cx: &mut Context<Self>) -> Self {
         let stream_handle = get_output_stream_handle();
         let sink = Sink::try_new(&stream_handle).unwrap();
-        let sink = Arc::new(Mutex::new(sink));
 
-        // Poll progress on a foreground timer instead of the old monitor
-        // thread + cushy Dynamic; ends itself once playback stops.
-        let sink_for_task = sink.clone();
-        let total = audio.length_in_sec();
+        AudioPlayer {
+            audio,
+            sink: Arc::new(Mutex::new(sink)),
+            playing: false,
+            progress: 0.0,
+        }
+    }
+
+    /// Polls playback position on a foreground timer instead of the old
+    /// monitor thread + cushy Dynamic; ends itself once playback stops
+    /// (paused or finished). Started from `toggle` each time playback
+    /// begins or resumes, not from `new`: a task started once in `new`
+    /// would see the sink empty on its very first tick (nothing has been
+    /// appended yet) and exit immediately, so progress would never update
+    /// and `playing` would stay true forever after the first play.
+    fn start_progress_polling(&mut self, cx: &mut Context<Self>) {
+        let sink_for_task = self.sink.clone();
+        let total = self.audio.length_in_sec();
         cx.spawn(async move |this, cx| loop {
             cx.background_executor()
                 .timer(Duration::from_millis(16))
@@ -98,7 +111,9 @@ impl AudioPlayer {
             let should_stop = this
                 .update(cx, |this, cx| {
                     this.playing = playing;
-                    this.progress = elapsed_fraction;
+                    // `Progress::value` expects a percentage in 0.0..100.0,
+                    // not the 0.0..1.0 fraction computed above.
+                    this.progress = elapsed_fraction * 100.0;
                     cx.notify();
                     !playing
                 })
@@ -108,32 +123,36 @@ impl AudioPlayer {
             }
         })
         .detach();
-
-        AudioPlayer {
-            audio,
-            sink,
-            playing: false,
-            progress: 0.0,
-        }
     }
 
     fn toggle(&mut self, cx: &mut Context<Self>) {
-        let sink = self.sink.lock().unwrap();
-        if sink.empty() {
+        // Lock through a cloned `Arc` handle, not `self.sink` directly, so
+        // the `MutexGuard`'s lifetime isn't tied to `self` — otherwise it
+        // would still be considered borrowed when `self.start_progress_polling`
+        // (which needs `&mut self`) is called below.
+        let sink_handle = self.sink.clone();
+        let sink = sink_handle.lock().unwrap();
+        let just_started_or_resumed = if sink.empty() {
             drop(sink);
-            let sink = self.sink.lock().unwrap();
+            let sink = sink_handle.lock().unwrap();
             sink.append(AudioWrapper {
                 audio: self.audio.clone(),
                 num_sample: 0,
             });
             sink.play();
             self.playing = true;
+            true
         } else if self.playing {
             sink.pause();
             self.playing = false;
+            false
         } else {
             sink.play();
             self.playing = true;
+            true
+        };
+        if just_started_or_resumed {
+            self.start_progress_polling(cx);
         }
         cx.notify();
     }

@@ -77,23 +77,27 @@ Consequences to keep in mind:
 
 - Renaming or adding a private field on a Python input/output class silently breaks the Rust extractor. Both sides must change together.
 - Type dispatch is by **class-name string** (`obj.get_type().name()? == "Slider"`), not `isinstance`, so class names are part of the contract. Outputs currently mix this with structural duck typing (`Plot` is detected via `hasattr("xs")`, the rest by name) — a known inconsistency flagged in `src/outputs.rs`.
-- `CallbackReturn` is also duck-typed: anything callable with an `inputs` attribute is treated as a `ReactiveBase`.
+- `LevelResult`'s `Nested` case is also duck-typed: anything callable with an `inputs` attribute is treated as a `ReactiveBase`.
 
-Adding a new **input** type touches: `_types_inputs.py` (class + `Input` union), `__init__.py` (re-export), `src/inputs/<name>.rs`, the `Input` enum + `FromPyObject` in `src/inputs/mod.rs`, a `src/widgets/ui_<name>.rs`, and the match in `input_widget`.
+Adding a new **input** type touches: `_types_inputs.py` (class + `Input` union), `__init__.py` (re-export), `src/inputs/<name>.rs` (the `<Name>Spec`/`<Name>Binding`/`parse_<name>` split — see below), the `InputSpec`/`InputBinding`/`InputValue` enums in `src/inputs/mod.rs`, a render function in `src/ui/inputs.rs`, and the matches in `src/ui/reactive_view.rs`.
 
-Adding a new **output** type touches: `_types_outputs.py` (class + `Output` union), `__init__.py`, the structs + `parse_output` in `src/outputs.rs`, a `src/widgets/ui_<name>.rs`, and the match in `outputs_widget`.
+Adding a new **output** type touches: `_types_outputs.py` (class + `Output` union), `__init__.py`, the struct + `parse_output` in `src/outputs.rs`, a `src/ui/<name>.rs`, the `PreparedOutput` enum + its match arms in `src/ui/reactive_view.rs`.
 
-## Reactivity and the UI loop
+## The worker thread, the scheduler, and the UI loop
 
-`reactive_input_output_widget` (`src/widgets/ui_reactive.rs`) is the heart of the app: a fixed 300px input sidebar plus a content area driven by a `Dynamic<Option<CallbackReturn>>`.
+No `Py` object ever reaches the UI thread. Parsing an input produces two halves: an `InputSpec` (plain Rust — name, min/max/init, …) sent to the UI, and an `InputBinding` (holds the `PyObject` handle used to write `_value`) that stays on the worker. `InputValue` is what the UI sends back to the worker to write.
 
-Each input widget registers a `for_each` on its cushy `Dynamic` that, under the GIL: writes the new value into the Python object → calls the Python callback → parses the return → sets `cb_return_dynamic`, which re-renders the content. If the callback returns another `ReactiveBase` instead of `Outputs`, the switcher recursively builds a *nested* sidebar+content (see `examples/example_nested_func.py` and `example_nested_inheritance.py`).
+A single `picoapp-worker` thread (`src/worker.rs`) owns a `Registry` of `LevelId -> (bindings, callback)` and processes `Job::Run`/`Job::Drop` messages sent over an `mpsc` channel from `WorkerHandle`. It's the only thread that ever calls into Python — it writes each input's `_value`, calls the callback, and parses the return via `parse_level_result` (`src/outputs.rs`), which never surfaces a raw `PyErr`: a raised exception becomes `LevelResult::Error(message + traceback)` (also printed to stderr) and a callback that returns another `ReactiveBase` becomes `LevelResult::Nested`, registering the new level's bindings before anything crosses to the UI as `UiLevelResult`.
 
-`CallbackReturn::eq` deliberately always returns `false` so every callback invocation triggers a UI update.
+`ReactiveView` (`src/ui/reactive_view.rs`) is one gpui `Entity` per reactive level — the root and each nested `ReactiveBase` — each holding a `RunScheduler` (`src/ui/run_scheduler.rs`, pure Rust, no gpui/pyo3 types). An input change goes through `RunScheduler::on_change`: if nothing is in flight it dispatches a `Job::Run` immediately; if a job is already running, the change is coalesced (latest value wins, no queue) and redispatched from `RunScheduler::on_result` once the in-flight job's reply arrives. The very first job for a level (root or nested) goes through `RunScheduler::start()` + `dispatch()` the same way, so every Python call — including the first — runs on the worker thread, not on the thread that constructed the view.
 
-GIL handling: `run_ui` releases the GIL with `py.allow_threads` for the whole event loop and re-acquires it via `Python::with_gil` inside widget callbacks.
+A `Nested` reply replaces `self.child: Option<Entity<ReactiveView>>`; the previous child's own `Context::on_release` callback (registered in `new_child`) drops its worker registration when its `Entity` is released, which recurses naturally for grandchildren since dropping a parent's `child` field drops that child's `Entity`, and so on. A reply that arrives after its view was released is simply dropped, except a `Nested` reply also gets an explicit `Job::Drop` for its (already-worker-registered) new level, since no `ReactiveView` will ever exist to release it otherwise.
 
-UI stack: [cushy](https://github.com/khonsulabs/cushy) (pinned to a git rev) on kludgine/wgpu; plots are rendered with `plotters` into a cushy `Canvas`; audio playback via `rodio`; images go straight to a wgpu `Texture`.
+A dispatch shows a busy dim after ~150ms (so fast callbacks don't flicker) and displays `LevelResult::Error`'s message in the content area without discarding the previous outputs. `Output::Image`/`Output::Audio` are built once into `PreparedOutput::Image`/`PreparedOutput::Audio` when a result arrives (`ReactiveView::set_outputs`), not on every render pass — gpui re-renders a view on far more than its own state changes, so rebuilding a `RenderImage` or `AudioPlayer` entity inside `Render::render` would re-upload the sprite atlas or restart playback on every unrelated redraw.
+
+GIL handling: the worker thread acquires the GIL per job (`Python::with_gil`) and releases it between jobs; `run_ui` releases the GIL with `py.allow_threads` for the whole gpui event loop, which never touches Python directly.
+
+UI stack: [gpui-kit](https://gpui-kit.com/) (`gpui-kit = "=0.6.6"`, pinned exactly — each release pins a different `gpui` snapshot) on gpui/wgpu; plots (`src/ui/line_plot.rs`, `src/ui/matrix_plot.rs`) are custom `gpui_component::plot::Plot` implementations built on `ScaleLinear`/`Line`/`PlotAxis`/`Grid`, not plotters; audio playback via `rodio`; images go through gpui's `RenderImage` (swizzled to BGRA — see `src/outputs.rs`'s `rgba_to_bgra` and its ledger note in `docs/superpowers/specs/2026-09-22-gpui-migration-design.md`).
 
 ## Known gaps
 
