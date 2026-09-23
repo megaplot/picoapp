@@ -38,7 +38,7 @@ The majority here is work-in-progress, far from stable.
 ./scripts/venv_compile_requirements  # re-pin requirements.txt from requirements*.in
 ```
 
-System dependencies (Linux): `libasound2-dev`, `libdbus-1-dev`.
+System dependencies (Linux): `libasound2-dev`, `libdbus-1-dev`, `libxkbcommon-x11-dev`, `libwayland-dev`, `libx11-xcb-dev`, `libfontconfig-dev`, `clang`.
 
 ## Build / test / check
 

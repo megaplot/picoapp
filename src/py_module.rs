@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::PySequence;
 
 use crate::inputs::{Input, Inputs};
-use crate::main_run_ui::run_ui;
+use crate::ui::run_ui;
 use crate::utils::Callback;
 
 #[pyfunction]
