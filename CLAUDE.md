@@ -59,7 +59,7 @@ python examples/example_1.py  # run an example app (needs a GPU/display)
 
 - **Language**: Keep communication concise and self-critical. Avoid overusing figurative/generic/vague terms that require translation into something concrete specific. Avoid following the LLM langue entry collapse. Avoid overusing terms: once X lands, fold X into, load-bearing
 - **Ask before essential decisions.** When an issue could indicate an architectural/design flaw, describe options with pros/cons instead of hacking around it.
-- **Git rules**: Never `git push` by yourself or `git commit` on main. Commits on `main` are left for the human companion to give a chance of a last review. Committing on feature branches is fine.
+- **Git rules**: Never `git push` by yourself or `git commit` on main. Commits on `main` are left for the human companion to give a chance of a last review. Committing on feature branches is fine. Never merge a feature branch into `main` yourself, locally or otherwise — the human companion always reviews a feature branch before it merges. This also means: when using the `superpowers` finishing-a-development-branch skill (or any equivalent finalize/wrap-up step), skip its menu and its merge/PR actions in this repo — just report the branch is done and stop; don't offer to merge or push.
 
 # Architecture
 
