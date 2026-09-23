@@ -1,4 +1,5 @@
 mod app;
+mod audio;
 mod color_utils;
 mod image;
 mod inputs;

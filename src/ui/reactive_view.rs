@@ -310,8 +310,11 @@ impl Render for ReactiveView {
                         let render_image = crate::ui::image::build_render_image(image);
                         crate::ui::image::image_element(image, render_image).into_any_element()
                     }
-                    // Audio wired up in Task 18.
-                    Output::Audio(_) => div().child("audio (not yet wired)").into_any_element(),
+                    Output::Audio(audio) => {
+                        let player =
+                            cx.new(|cx| crate::ui::audio::AudioPlayer::new(audio.clone(), cx));
+                        div().child(player).into_any_element()
+                    }
                 }))
                 .into_any_element()
         };
