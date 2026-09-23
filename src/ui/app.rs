@@ -1,25 +1,18 @@
+use std::sync::Arc;
+
 use gpui_kit::component::Root;
 use gpui_kit::{
-    App, AppContext, Bounds, Context, IntoElement, ParentElement, Point, Render, TitlebarOptions,
-    Window, WindowBounds, WindowOptions, div, px, size,
+    App, AppContext, Bounds, Point, Render, TitlebarOptions, Window, WindowBounds, WindowOptions,
+    px, size,
 };
 use log::info;
 use pyo3::prelude::*;
 
 use crate::inputs::{parse_inputs, InputValue};
 use crate::logging_setup::setup_logging;
+use crate::ui::reactive_view::ReactiveView;
 use crate::utils::Callback;
 use crate::worker::spawn_root;
-
-struct RootPlaceholder {
-    summary: String,
-}
-
-impl Render for RootPlaceholder {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div().child(self.summary.clone())
-    }
-}
 
 /// gpui-kit 0.6.6 (the version pinned by this crate) does not yet publish
 /// the `gpui_kit::open_window` convenience wrapper that a newer,
@@ -68,31 +61,20 @@ pub fn run_ui(py: Python<'_>, input_objs: &[Bound<'_, PyAny>], callback: Callbac
         .collect();
 
     let (worker, root_level, initial_result) = spawn_root(py, bindings, callback, initial_values);
+    info!("Initial root result computed, opening window");
 
-    let summary = match &initial_result {
-        crate::worker::UiLevelResult::Outputs(outputs) => format!("{} output(s)", outputs.len()),
-        crate::worker::UiLevelResult::Nested { specs, .. } => {
-            format!("nested, {} input(s)", specs.len())
-        }
-        crate::worker::UiLevelResult::Error(msg) => format!("error: {msg}"),
-        crate::worker::UiLevelResult::Discarded => "discarded".to_string(),
-    };
-    info!("Initial root result: {summary}");
-
+    let worker = Arc::new(worker);
     py.allow_threads(move || {
         gpui_kit::application().run(move |cx: &mut App| {
             gpui_kit::init(cx);
-            open_window(window_options(), cx, move |_window, cx| {
-                cx.new(|_cx| RootPlaceholder { summary })
+            open_window(window_options(), cx, move |window, cx| {
+                cx.new(|cx| {
+                    ReactiveView::new(root_level, specs, initial_result, worker, window, cx)
+                })
             })
             .expect("failed to open window");
         });
     });
 
-    // `worker`'s Drop impl joins the thread once it goes out of scope here,
-    // after the gpui event loop has returned (Linux/Windows). On macOS the
-    // process terminates before this line runs (known limitation, see spec).
-    drop(worker);
-    let _ = root_level;
     Ok(())
 }
