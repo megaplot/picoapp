@@ -2,8 +2,8 @@ mod checkbox;
 mod radio;
 mod slider;
 
-pub use checkbox::{Checkbox, PyCheckbox};
-pub use radio::{PyRadio, Radio};
+pub use checkbox::{Checkbox, CheckboxSpec, PyCheckbox};
+pub use radio::{PyRadio, Radio, RadioSpec};
 pub use slider::{parse_slider, PySlider, SliderBinding, SliderSpec};
 
 use pyo3::exceptions::PyValueError;

@@ -1,7 +1,9 @@
+use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::radio::RadioGroup;
 use gpui_kit::component::slider::{Slider, SliderScale, SliderState};
-use gpui_kit::{Context, Entity, IntoElement, ParentElement, Styled};
+use gpui_kit::{App, Context, ElementId, Entity, IntoElement, ParentElement, Styled, Window};
 
-use crate::inputs::SliderSpec;
+use crate::inputs::{CheckboxSpec, RadioSpec, SliderSpec};
 
 pub fn make_slider_state(spec: &SliderSpec<f64>) -> SliderState {
     let mut state = SliderState::new()
@@ -39,6 +41,34 @@ pub fn render_slider_row<T: 'static>(
         .gap_1()
         .child(format_slider_label(spec, value))
         .child(Slider::new(state))
+}
+
+pub fn render_checkbox(
+    id: impl Into<ElementId>,
+    spec: &CheckboxSpec,
+    checked: bool,
+    on_change: impl Fn(&bool, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    Checkbox::new(id)
+        .label(spec.name.clone())
+        .checked(checked)
+        .on_change(on_change)
+}
+
+pub fn render_radio(
+    id: impl Into<ElementId>,
+    spec: &RadioSpec,
+    selected: Option<usize>,
+    on_change: impl Fn(&usize, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    // `spec.value_names` (`Vec<String>`) converts into `Radio` via gpui-kit's
+    // `impl From<String> for Radio`, which sets both the id and the visible
+    // label to that string. Building a bare `Radio::new(name)` instead would
+    // only set the id, leaving the label blank.
+    RadioGroup::vertical(id)
+        .children(spec.value_names.iter().cloned())
+        .selected_index(selected)
+        .on_change(on_change)
 }
 
 #[cfg(test)]
