@@ -53,7 +53,7 @@ python examples/example_1.py  # run an example app (needs a GPU/display)
 
 `maturin develop --uv && python examples/example_X.py` is the main iteration loop for anything touching Rust.
 
-`.github/workflows/deploy.yml` is generated — regenerate with `./scripts/regenerate_maturin_ci`, don't hand-edit.
+`.github/workflows/deploy.yml` started from `./scripts/regenerate_maturin_ci` (which wraps `maturin generate-ci github`) but has hand edits since (target matrix trimmed, manylinux version, Linux system dependencies) — regenerating it from scratch will lose them; diff before overwriting.
 
 ## AI Workflow Rules
 

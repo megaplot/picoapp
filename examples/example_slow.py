@@ -13,7 +13,9 @@ inputs = pa.Inputs(
 def callback() -> pa.Outputs:
     time.sleep(delay.value)
     if delay.value > raise_above.value:
-        raise ValueError(f"delay.value={delay.value} exceeded raise_above.value={raise_above.value}")
+        raise ValueError(
+            f"delay.value={delay.value} exceeded raise_above.value={raise_above.value}"
+        )
 
     xs = np.linspace(-10.0, 10.0, 100)
     ys = np.sin(xs + delay.value)
