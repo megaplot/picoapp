@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use gpui_kit::component::ActiveTheme;
 use gpui_kit::gpui::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Window,
+    div, px, App, AppContext, Context, Entity, InteractiveElement, StatefulInteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
 };
 
 use crate::inputs::{InputSpec, InputValue};
@@ -47,8 +48,8 @@ enum InputWidgetState {
 /// would upload a fresh image every frame and restart audio playback on
 /// every unrelated redraw.
 enum PreparedOutput {
-    Plot(crate::outputs::Plot),
-    MatrixPlot(crate::outputs::MatrixPlot),
+    Plot(Arc<crate::outputs::Plot>),
+    MatrixPlot(Arc<crate::outputs::MatrixPlot>),
     Image {
         data: crate::outputs::Image,
         render_image: Arc<gpui_kit::RenderImage>,
@@ -303,8 +304,8 @@ impl ReactiveView {
         self.outputs = outputs
             .into_iter()
             .map(|output| match output {
-                Output::Plot(plot) => PreparedOutput::Plot(plot),
-                Output::MatrixPlot(matrix) => PreparedOutput::MatrixPlot(matrix),
+                Output::Plot(plot) => PreparedOutput::Plot(Arc::new(plot)),
+                Output::MatrixPlot(matrix) => PreparedOutput::MatrixPlot(Arc::new(matrix)),
                 Output::Image(data) => {
                     let render_image = build_render_image(&data);
                     PreparedOutput::Image { data, render_image }
@@ -338,77 +339,109 @@ impl ReactiveView {
     }
 }
 
+/// One input in the sidebar: a rounded card, like the cushy version's
+/// containers, so inputs read as separate controls on the dark background.
+fn input_card(cx: &App) -> gpui_kit::Div {
+    div()
+        .p_3()
+        .rounded_md()
+        .bg(cx.theme().group_box)
+        .text_color(cx.theme().group_box_foreground)
+}
+
 impl Render for ReactiveView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.pending_image_drops.is_empty() {
-            drop_images(_window, std::mem::take(&mut self.pending_image_drops));
+            drop_images(window, std::mem::take(&mut self.pending_image_drops));
         }
 
         let sidebar = div()
+            .id(("sidebar", self.level.index()))
+            .w(px(300.))
+            .flex_shrink_0()
             .flex()
             .flex_col()
-            .w(px(300.))
             .gap_2()
+            .overflow_y_scroll()
             .children(self.widgets.iter().enumerate().map(|(i, widget)| {
                 match widget {
                     InputWidgetState::Slider { spec, state } => {
                         let value = state.read(cx).value().start();
-                        render_slider_row(spec, state, value, cx).into_any_element()
+                        input_card(cx)
+                            .child(render_slider_row(spec, state, value, cx))
+                            .into_any_element()
                     }
                     InputWidgetState::IntSlider { spec, state } => {
                         let value = state.read(cx).value().start();
-                        render_int_slider_row(spec, state, value, cx).into_any_element()
+                        input_card(cx)
+                            .child(render_int_slider_row(spec, state, value, cx))
+                            .into_any_element()
                     }
-                    InputWidgetState::Checkbox { spec, checked } => {
-                        render_checkbox(("input", i), spec, *checked, {
+                    InputWidgetState::Checkbox { spec, checked } => input_card(cx)
+                        .child(render_checkbox(("input", i), spec, *checked, {
                             let entity = cx.entity();
                             move |v, _window, cx| {
                                 entity.update(cx, |this, cx| {
                                     this.on_input_changed(i, InputValue::Bool(*v), cx);
                                 });
                             }
-                        })
-                        .into_any_element()
-                    }
-                    InputWidgetState::Radio { spec, selected } => {
-                        render_radio(("input", i), spec, Some(*selected), {
+                        }))
+                        .into_any_element(),
+                    InputWidgetState::Radio { spec, selected } => input_card(cx)
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(div().text_sm().text_color(cx.theme().muted_foreground).child(spec.name.clone()))
+                        .child(render_radio(("input", i), spec, Some(*selected), {
                             let entity = cx.entity();
                             move |v, _window, cx| {
                                 entity.update(cx, |this, cx| {
                                     this.on_input_changed(i, InputValue::Index(*v), cx);
                                 });
                             }
-                        })
-                        .into_any_element()
-                    }
+                        }))
+                        .into_any_element(),
                 }
             }));
 
         let error_block = self.error.as_ref().map(|msg| {
             div()
-                .p_2()
-                .text_color(gpui_kit::red())
+                .p_3()
+                .rounded_md()
+                .bg(cx.theme().danger.opacity(0.15))
+                .text_color(cx.theme().danger)
                 .child(msg.clone())
                 .into_any_element()
         });
 
         let outputs_or_child = if let Some(child) = &self.child {
-            div().flex_1().child(child.clone()).into_any_element()
+            div().flex_1().min_w_0().child(child.clone()).into_any_element()
         } else {
             div()
                 .flex_1()
+                .min_w_0()
                 .flex()
                 .flex_col()
-                .gap_4()
+                .gap_2()
                 .children(self.outputs.iter().map(|output| match output {
-                    PreparedOutput::Plot(plot) => LinePlot { data: plot.clone() }.into_any_element(),
-                    PreparedOutput::MatrixPlot(matrix) => {
-                        MatrixPlotView { data: matrix.clone() }.into_any_element()
-                    }
-                    PreparedOutput::Image { data, render_image } => {
-                        image_element(data, render_image.clone()).into_any_element()
-                    }
-                    PreparedOutput::Audio(player) => div().child(player.clone()).into_any_element(),
+                    PreparedOutput::Plot(plot) => div()
+                        .flex_1()
+                        .min_h(px(120.))
+                        .child(LinePlot { data: plot.clone() })
+                        .into_any_element(),
+                    PreparedOutput::MatrixPlot(matrix) => div()
+                        .flex_1()
+                        .min_h(px(120.))
+                        .child(MatrixPlotView { data: matrix.clone() })
+                        .into_any_element(),
+                    PreparedOutput::Image { data, render_image } => input_card(cx)
+                        .child(image_element(data, render_image.clone()))
+                        .into_any_element(),
+                    PreparedOutput::Audio(player) => div()
+                        .flex()
+                        .justify_center()
+                        .child(player.clone())
+                        .into_any_element(),
                 }))
                 .into_any_element()
         };
@@ -418,9 +451,10 @@ impl Render for ReactiveView {
         // while a nested level from its previous run is still shown).
         let content = div()
             .flex_1()
+            .min_w_0()
             .flex()
             .flex_col()
-            .gap_4()
+            .gap_2()
             .when(self.busy, |el| el.opacity(0.5))
             .children(error_block)
             .child(outputs_or_child);
@@ -428,6 +462,7 @@ impl Render for ReactiveView {
         div()
             .flex()
             .flex_row()
+            .gap_2()
             .size_full()
             .child(sidebar)
             .child(content)

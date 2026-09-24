@@ -1,7 +1,10 @@
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::radio::RadioGroup;
 use gpui_kit::component::slider::{Slider, SliderScale, SliderState};
-use gpui_kit::{App, Context, ElementId, Entity, IntoElement, ParentElement, Styled, Window};
+use gpui_kit::component::{h_flex, v_flex, ActiveTheme};
+use gpui_kit::{
+    div, App, Context, ElementId, Entity, IntoElement, ParentElement, Styled, Window,
+};
 
 use crate::inputs::{CheckboxSpec, RadioSpec, SliderSpec};
 
@@ -33,22 +36,32 @@ pub fn make_int_slider_state(spec: &SliderSpec<i64>) -> SliderState {
         .step(1.0)
 }
 
-pub fn format_slider_label(spec: &SliderSpec<f64>, value: f32) -> String {
+/// The value text next to a float slider's name, with the spec's precision.
+pub fn format_slider_value(spec: &SliderSpec<f64>, value: f32) -> String {
     match spec.decimal_places {
-        Some(places) => format!("{}: {:.places$}", spec.name, value, places = places),
-        None => format!("{}: {}", spec.name, value),
+        Some(places) => format!("{:.places$}", value, places = places),
+        None => format!("{}", value),
     }
+}
+
+/// "name  value" above the slider, name in the normal text color and the
+/// value dimmed (as in the cushy version).
+fn slider_header(name: &str, value: String, cx: &App) -> impl IntoElement {
+    h_flex()
+        .gap_2()
+        .child(div().child(name.to_string()))
+        .child(div().text_color(cx.theme().muted_foreground).child(value))
 }
 
 pub fn render_slider_row<T: 'static>(
     spec: &SliderSpec<f64>,
     state: &Entity<SliderState>,
     value: f32,
-    _cx: &mut Context<T>,
+    cx: &mut Context<T>,
 ) -> impl IntoElement {
-    gpui_kit::component::v_flex()
-        .gap_1()
-        .child(format_slider_label(spec, value))
+    v_flex()
+        .gap_2()
+        .child(slider_header(&spec.name, format_slider_value(spec, value), cx))
         .child(Slider::new(state))
 }
 
@@ -56,11 +69,11 @@ pub fn render_int_slider_row<T: 'static>(
     spec: &SliderSpec<i64>,
     state: &Entity<SliderState>,
     value: f32,
-    _cx: &mut Context<T>,
+    cx: &mut Context<T>,
 ) -> impl IntoElement {
-    gpui_kit::component::v_flex()
-        .gap_1()
-        .child(format!("{}: {}", spec.name, value as i64))
+    v_flex()
+        .gap_2()
+        .child(slider_header(&spec.name, format!("{}", value as i64), cx))
         .child(Slider::new(state))
 }
 

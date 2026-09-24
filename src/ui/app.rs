@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use gpui_kit::component::Root;
+use gpui_kit::component::{ActiveTheme, Root, TitleBar, v_flex};
 use gpui_kit::{
-    App, AppContext, Bounds, Point, Render, TitlebarOptions, Window, WindowBounds, WindowOptions,
-    px, size,
+    App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Point, Render, Styled,
+    TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
 };
 use log::info;
 use pyo3::prelude::*;
@@ -32,17 +32,43 @@ fn open_window<V: 'static + Render>(
     })
 }
 
+const APP_TITLE: &str = "pico app";
+
 fn window_options() -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: Point::default(),
             size: size(px(1600.), px(1000.)),
         })),
+        window_min_size: Some(size(px(640.), px(400.))),
         titlebar: Some(TitlebarOptions {
-            title: Some("pico app".into()),
-            ..Default::default()
+            title: Some(APP_TITLE.into()),
+            ..TitleBar::title_bar_options()
         }),
-        ..Default::default()
+        // A GNOME/Wayland compositor does not draw window decorations for
+        // us, so ask for client-side ones; `TitleBar` then draws the title
+        // and the window controls. Where the compositor does provide
+        // server-side decorations gpui-kit's `TitleBar` skips its own.
+        #[cfg(target_os = "linux")]
+        window_decorations: Some(gpui_kit::WindowDecorations::Client),
+        ..TitleBar::window_options()
+    }
+}
+
+/// The window's content: a title bar above the root `ReactiveView`, on the
+/// dark theme's background with an 8px gutter around the content.
+struct AppShell {
+    content: Entity<ReactiveView>,
+}
+
+impl Render for AppShell {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child(TitleBar::new().child(APP_TITLE))
+            .child(div().flex_1().min_h_0().p_2().child(self.content.clone()))
     }
 }
 
@@ -57,8 +83,14 @@ pub fn run_ui(py: Python<'_>, input_objs: &[Bound<'_, PyAny>], callback: Callbac
     py.allow_threads(move || {
         gpui_kit::application().run(move |cx: &mut App| {
             gpui_kit::init(cx);
+            // picoapp is deliberately dark: it suits its use case (studying
+            // algorithms on plots) and matches the cushy version's look.
+            crate::ui::style::apply_dark_palette(cx);
             open_window(window_options(), cx, move |window, cx| {
-                cx.new(|cx| ReactiveView::new(root_level, specs, worker, window, cx))
+                window.set_window_title(APP_TITLE);
+                let content =
+                    cx.new(|cx| ReactiveView::new(root_level, specs, worker, window, cx));
+                cx.new(|_| AppShell { content })
             })
             .expect("failed to open window");
         });

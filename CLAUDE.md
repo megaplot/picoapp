@@ -53,6 +53,10 @@ python examples/example_1.py  # run an example app (needs a GPU/display)
 
 `maturin develop --uv && python examples/example_X.py` is the main iteration loop for anything touching Rust.
 
+UI QA without a desktop session (screenshots, clicks, drags) runs on a virtual X server: see `scripts/qa/README.md`. Prefer it over "the window opens without crashing" checks, which cannot catch interaction or rendering bugs.
+
+Also: picoapp must print nothing by default (its stdout/stderr belong to the user's callback); `RUST_LOG=info` opts into UI-stack logs.
+
 `.github/workflows/deploy.yml` started from `./scripts/regenerate_maturin_ci` (which wraps `maturin generate-ci github`) but has hand edits since (target matrix trimmed, manylinux version, Linux system dependencies) — regenerating it from scratch will lose them; diff before overwriting.
 
 ## AI Workflow Rules

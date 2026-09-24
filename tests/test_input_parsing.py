@@ -70,14 +70,17 @@ def test_worker_job_returns_error_on_exception():
     assert "boom" in result
 
 
-def test_worker_job_prints_exception_traceback_to_stderr(capfd):
+def test_worker_job_is_silent_on_stdout_and_stderr(capfd):
+    # A picoapp's stdout/stderr belong to the user's callback: an exception
+    # is shown in the UI (and returned as Error), never printed by picoapp.
     checkbox = pa.Checkbox("c")
 
     def callback():
         raise ValueError("boom")
 
-    _run_worker_job([checkbox], callback, [True])
+    result = _run_worker_job([checkbox], callback, [True])
+    assert "boom" in result and "File " in result  # still reported, to the UI
 
     captured = capfd.readouterr()
-    assert "boom" in captured.err
-    assert "Traceback" in captured.err
+    assert captured.out == ""
+    assert captured.err == ""

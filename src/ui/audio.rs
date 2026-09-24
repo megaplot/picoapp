@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui_kit::component::button::Button;
-use gpui_kit::component::progress::Progress;
-use gpui_kit::{div, Context, IntoElement, ParentElement, Render, Styled, Window};
+use gpui_kit::component::{h_flex, ActiveTheme};
+use gpui_kit::{div, px, relative, Context, IntoElement, ParentElement, Render, Styled, Window};
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 
 use crate::outputs::Audio;
@@ -111,9 +111,10 @@ impl AudioPlayer {
             let should_stop = this
                 .update(cx, |this, cx| {
                     this.playing = playing;
-                    // `Progress::value` expects a percentage in 0.0..100.0,
-                    // not the 0.0..1.0 fraction computed above.
-                    this.progress = elapsed_fraction * 100.0;
+                    // `elapsed_fraction` is 0.0 once the sink is empty, i.e.
+                    // when playback has ended: the bar resets at once (see
+                    // `Render`, which draws it without any animation).
+                    this.progress = elapsed_fraction;
                     cx.notify();
                     !playing
                 })
@@ -161,16 +162,40 @@ impl AudioPlayer {
 impl Render for AudioPlayer {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let label = if self.playing { "Pause" } else { "Play" };
-        div()
-            .flex()
-            .flex_row()
-            .gap_2()
+        // A plain track + fill instead of gpui-kit's `Progress`: that
+        // component animates every value change, so the bar visibly ran
+        // *backwards* when playback ended and the value reset to 0 (and
+        // lagged behind the 16ms position updates while playing).
+        let theme = cx.theme();
+        h_flex()
+            .gap_3()
             .items_center()
+            .p_3()
+            .rounded_md()
+            .bg(theme.group_box)
             .child(
-                Button::new("audio-toggle")
-                    .label(label)
-                    .on_click(cx.listener(|this, _, _window, cx| this.toggle(cx))),
+                // Fixed width: "Play" and "Pause" differ in width, which
+                // would otherwise resize the whole card on every toggle.
+                div().w(px(72.)).child(
+                    Button::new("audio-toggle")
+                        .label(label)
+                        .w_full()
+                        .on_click(cx.listener(|this, _, _window, cx| this.toggle(cx))),
+                ),
             )
-            .child(Progress::new("audio-progress").value(self.progress))
+            .child(
+                div()
+                    .w(px(200.))
+                    .h(px(6.))
+                    .rounded_full()
+                    .bg(theme.progress_bar.opacity(0.25))
+                    .child(
+                        div()
+                            .h_full()
+                            .w(relative(self.progress.clamp(0.0, 1.0)))
+                            .rounded_full()
+                            .bg(theme.progress_bar),
+                    ),
+            )
     }
 }

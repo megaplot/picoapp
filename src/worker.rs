@@ -11,6 +11,13 @@ use crate::utils::Callback;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LevelId(u64);
 
+impl LevelId {
+    /// Stable numeric id, usable as a gpui element id component.
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 struct Level {
     bindings: Vec<InputBinding>,
     callback: Callback,
