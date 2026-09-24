@@ -53,7 +53,7 @@ python examples/example_1.py  # run an example app (needs a GPU/display)
 
 `maturin develop --uv && python examples/example_X.py` is the main iteration loop for anything touching Rust.
 
-UI QA without a desktop session (screenshots, clicks, drags) runs on a virtual X server: see `scripts/qa/README.md`. Prefer it over "the window opens without crashing" checks, which cannot catch interaction or rendering bugs.
+UI QA without a desktop session runs headlessly: an X11 path (Xvfb; screenshots *and* clicks/drags; the default) and a Wayland path (private GNOME Shell; screenshots only, for window decorations). `scripts/qa/README.md` says which to pick and how. Use it for any UI change instead of "the window opens without crashing" checks, which cannot catch interaction or rendering bugs.
 
 Also: picoapp must print nothing by default (its stdout/stderr belong to the user's callback); `RUST_LOG=info` opts into UI-stack logs.
 
@@ -99,7 +99,7 @@ A `Nested` reply replaces `self.child: Option<Entity<ReactiveView>>`; the previo
 
 A dispatch shows a busy dim after ~150ms (so fast callbacks don't flicker) and displays `LevelResult::Error`'s message in the content area without discarding the previous outputs. `Output::Image`/`Output::Audio` are built once into `PreparedOutput::Image`/`PreparedOutput::Audio` when a result arrives (`ReactiveView::set_outputs`), not on every render pass — gpui re-renders a view on far more than its own state changes, so rebuilding a `RenderImage` or `AudioPlayer` entity inside `Render::render` would re-upload the sprite atlas or restart playback on every unrelated redraw.
 
-Styling: `src/ui/style.rs` is the design system — the dark palette (applied to gpui-kit's theme so its components follow it), spacing/size tokens (`GUTTER`, `CARD_RADIUS`, ...) and semantic helpers (`card`, `error_card`, `muted_text`, `plot_colors`). Components use those instead of composing raw colors/paddings; the plot panel is the one fixed-color exception (white plots on the dark UI, as before). `src/ui/header_bar.rs` draws an Adwaita-style header bar only when the compositor does not draw decorations itself (GNOME/Wayland). gpui-kit needs `application().with_assets(gpui_kit::assets::Assets)` for its icons (checkmarks, window controls).
+Styling: `src/ui/style.rs` is the design system — the dark palette (applied to gpui-kit's theme so its components follow it), spacing/size tokens (`GUTTER`, `CARD_RADIUS`, ...) and semantic helpers (`card`, `error_card`, `muted_text`, `plot_colors`). Components use those instead of composing raw colors/paddings; the plot panel is the one fixed-color exception (white plots on the dark UI, as before). Window frame: the app asks the compositor/OS for its native decorations (`WindowDecorations::Server`, plain native title bar options); `src/ui/header_bar.rs` draws an Adwaita-style header bar only as the fallback when gpui reports client-side decorations (GNOME on Wayland refuses server-side ones by design). gpui-kit needs `application().with_assets(gpui_kit::assets::Assets)` for its icons (checkmarks, window controls).
 
 GIL handling: the worker thread acquires the GIL per job (`Python::with_gil`) and releases it between jobs; `run_ui` releases the GIL with `py.allow_threads` for the whole gpui event loop, which never touches Python directly.
 

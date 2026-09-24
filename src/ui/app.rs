@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui_kit::component::{v_flex, ActiveTheme, Root, TitleBar};
+use gpui_kit::component::{v_flex, ActiveTheme, Root};
 use gpui_kit::{
     App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Point, Render, Styled,
     TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
@@ -43,21 +43,25 @@ fn window_options() -> WindowOptions {
             size: size(px(1600.), px(1000.)),
         })),
         window_min_size: Some(size(px(640.), px(400.))),
+        // The platform's own title bar: native on macOS and Windows, and on
+        // Linux wherever the compositor draws window decorations (X11 window
+        // managers, KDE, wlroots compositors, ...).
         titlebar: Some(TitlebarOptions {
             title: Some(APP_TITLE.into()),
-            ..TitleBar::title_bar_options()
+            ..Default::default()
         }),
-        // A GNOME/Wayland compositor does not draw window decorations for
-        // us, so ask for client-side ones; `TitleBar` then draws the title
-        // and the window controls. Where the compositor does provide
-        // server-side decorations gpui-kit's `TitleBar` skips its own.
+        // Ask the compositor for its decorations. gpui falls back to
+        // client-side decorations when the compositor has none to offer
+        // (GNOME on Wayland refuses by design); only then does `HeaderBar`
+        // draw one of its own.
         #[cfg(target_os = "linux")]
-        window_decorations: Some(gpui_kit::WindowDecorations::Client),
-        ..TitleBar::window_options()
+        window_decorations: Some(gpui_kit::WindowDecorations::Server),
+        ..Default::default()
     }
 }
 
-/// The window's content: a title bar above the root `ReactiveView`, on the
+/// The window's content: a header bar (only if the compositor draws no
+/// decorations, see `HeaderBar`) above the root `ReactiveView`, on the
 /// dark theme's background with an 8px gutter around the content.
 struct AppShell {
     content: Entity<ReactiveView>,

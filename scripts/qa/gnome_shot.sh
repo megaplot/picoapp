@@ -18,3 +18,4 @@ sleep "$SECS"
 gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
   --method org.gnome.Shell.Screenshot.Screenshot false false "$OUT" >/dev/null
 kill $PID 2>/dev/null; wait $PID 2>/dev/null
+exit 0

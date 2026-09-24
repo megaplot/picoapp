@@ -9,3 +9,4 @@ PID=$!
 sleep "$SECS"
 python "$HERE/shot.py" "$OUT" :99
 kill $PID 2>/dev/null; wait $PID 2>/dev/null
+exit 0
