@@ -2,44 +2,20 @@
 //! version — plots stay white on picoapp's dark UI), a left/bottom margin
 //! that holds the tick labels, and tick-label formatting.
 
-use gpui_kit::{fill, px, App, Bounds, Hsla, Pixels, Point, Rgba, Window, hsla, size};
+use gpui_kit::{fill, px, size, App, Bounds, Pixels, Point, Window};
+
+use crate::ui::style::{plot_colors, CARD_RADIUS};
 
 const MARGIN_LEFT: f32 = 48.0;
 const MARGIN_TOP: f32 = 10.0;
 const MARGIN_RIGHT: f32 = 16.0;
 const MARGIN_BOTTOM: f32 = 28.0;
 
-pub const PANEL_RADIUS: f32 = 6.0;
-
-pub struct PlotColors {
-    pub panel: Hsla,
-    pub axis: Hsla,
-    pub text: Hsla,
-    pub grid: Hsla,
-    pub line: Hsla,
-}
-
-pub fn plot_colors() -> PlotColors {
-    PlotColors {
-        panel: hsla(0.0, 0.0, 1.0, 1.0),
-        axis: hsla(0.0, 0.0, 0.2, 1.0),
-        text: hsla(0.0, 0.0, 0.25, 1.0),
-        grid: hsla(0.0, 0.0, 0.86, 1.0),
-        line: Rgba {
-            r: 0.87,
-            g: 0.1,
-            b: 0.1,
-            a: 1.0,
-        }
-        .into(),
-    }
-}
-
 /// Fills the whole element with the rounded white panel and returns the
 /// inner area the data is drawn in (the margins hold the tick labels).
 pub fn paint_panel(bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) -> Bounds<Pixels> {
     window.paint_quad(
-        fill(bounds, plot_colors().panel).corner_radii(px(PANEL_RADIUS)),
+        fill(bounds, plot_colors().panel).corner_radii(CARD_RADIUS),
     );
     Bounds {
         origin: bounds.origin + Point::new(px(MARGIN_LEFT), px(MARGIN_TOP)),

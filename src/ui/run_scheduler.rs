@@ -37,6 +37,13 @@ impl RunScheduler {
     /// change was folded into the pending set for when the in-flight job
     /// finishes.
     pub fn on_change(&mut self, index: usize, value: InputValue) -> Option<Vec<InputValue>> {
+        // Widgets report events, not changes: a slider emits one on every
+        // mouse move even while its (integer-rounded) value stays put.
+        // Re-running the callback for an unchanged value is pure waste —
+        // and for a callback that rebuilds nested inputs, harmful.
+        if self.values[index] == value {
+            return None;
+        }
         self.values[index] = value;
         if self.in_flight {
             self.dirty = true;
@@ -122,6 +129,24 @@ mod tests {
         assert_eq!(s.on_change(1, f(9.0)), Some(vec![f(0.0), f(9.0)]));
         assert_eq!(s.on_change(0, f(5.0)), None);
         assert_eq!(s.on_result(), Some(vec![f(5.0), f(9.0)]));
+    }
+
+    #[test]
+    fn unchanged_value_does_not_dispatch() {
+        // An IntSlider emits a change event on every mouse move even while
+        // its integer value stays the same; that must not re-run the callback.
+        let mut s = RunScheduler::new(vec![f(3.0)]);
+        assert_eq!(s.on_change(0, f(3.0)), None);
+        // ...and it left the scheduler idle: a real change still dispatches.
+        assert_eq!(s.on_change(0, f(4.0)), Some(vec![f(4.0)]));
+    }
+
+    #[test]
+    fn unchanged_value_while_in_flight_does_not_queue_a_rerun() {
+        let mut s = RunScheduler::new(vec![f(0.0)]);
+        s.on_change(0, f(1.0)); // in flight with 1.0
+        assert_eq!(s.on_change(0, f(1.0)), None);
+        assert_eq!(s.on_result(), None); // nothing pending: no redundant re-run
     }
 
     #[test]

@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use gpui_kit::component::ActiveTheme;
 use gpui_kit::gpui::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, App, AppContext, Context, Entity, InteractiveElement, StatefulInteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
+    div, px, AppContext, Context, Entity, InteractiveElement, StatefulInteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
 };
 
 use crate::inputs::{InputSpec, InputValue};
@@ -17,6 +16,9 @@ use crate::ui::inputs::{
 use crate::ui::line_plot::LinePlot;
 use crate::ui::matrix_plot::MatrixPlotView;
 use crate::ui::run_scheduler::RunScheduler;
+use crate::ui::style::{
+    card, error_card, muted_text, CONTROL_GAP, GUTTER, SIDEBAR_WIDTH,
+};
 use crate::worker::{Job, LevelId, UiLevelResult, WorkerHandle};
 
 enum InputWidgetState {
@@ -339,16 +341,6 @@ impl ReactiveView {
     }
 }
 
-/// One input in the sidebar: a rounded card, like the cushy version's
-/// containers, so inputs read as separate controls on the dark background.
-fn input_card(cx: &App) -> gpui_kit::Div {
-    div()
-        .p_3()
-        .rounded_md()
-        .bg(cx.theme().group_box)
-        .text_color(cx.theme().group_box_foreground)
-}
-
 impl Render for ReactiveView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.pending_image_drops.is_empty() {
@@ -357,27 +349,27 @@ impl Render for ReactiveView {
 
         let sidebar = div()
             .id(("sidebar", self.level.index()))
-            .w(px(300.))
+            .w(SIDEBAR_WIDTH)
             .flex_shrink_0()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap(GUTTER)
             .overflow_y_scroll()
             .children(self.widgets.iter().enumerate().map(|(i, widget)| {
                 match widget {
                     InputWidgetState::Slider { spec, state } => {
                         let value = state.read(cx).value().start();
-                        input_card(cx)
+                        card(cx)
                             .child(render_slider_row(spec, state, value, cx))
                             .into_any_element()
                     }
                     InputWidgetState::IntSlider { spec, state } => {
                         let value = state.read(cx).value().start();
-                        input_card(cx)
+                        card(cx)
                             .child(render_int_slider_row(spec, state, value, cx))
                             .into_any_element()
                     }
-                    InputWidgetState::Checkbox { spec, checked } => input_card(cx)
+                    InputWidgetState::Checkbox { spec, checked } => card(cx)
                         .child(render_checkbox(("input", i), spec, *checked, {
                             let entity = cx.entity();
                             move |v, _window, cx| {
@@ -387,11 +379,11 @@ impl Render for ReactiveView {
                             }
                         }))
                         .into_any_element(),
-                    InputWidgetState::Radio { spec, selected } => input_card(cx)
+                    InputWidgetState::Radio { spec, selected } => card(cx)
                         .flex()
                         .flex_col()
-                        .gap_2()
-                        .child(div().text_sm().text_color(cx.theme().muted_foreground).child(spec.name.clone()))
+                        .gap(CONTROL_GAP)
+                        .child(div().text_sm().text_color(muted_text(cx)).child(spec.name.clone()))
                         .child(render_radio(("input", i), spec, Some(*selected), {
                             let entity = cx.entity();
                             move |v, _window, cx| {
@@ -404,15 +396,10 @@ impl Render for ReactiveView {
                 }
             }));
 
-        let error_block = self.error.as_ref().map(|msg| {
-            div()
-                .p_3()
-                .rounded_md()
-                .bg(cx.theme().danger.opacity(0.15))
-                .text_color(cx.theme().danger)
-                .child(msg.clone())
-                .into_any_element()
-        });
+        let error_block = self
+            .error
+            .as_ref()
+            .map(|msg| error_card(msg.clone(), cx).into_any_element());
 
         let outputs_or_child = if let Some(child) = &self.child {
             div().flex_1().min_w_0().child(child.clone()).into_any_element()
@@ -422,7 +409,7 @@ impl Render for ReactiveView {
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .gap_2()
+                .gap(GUTTER)
                 .children(self.outputs.iter().map(|output| match output {
                     PreparedOutput::Plot(plot) => div()
                         .flex_1()
@@ -434,7 +421,7 @@ impl Render for ReactiveView {
                         .min_h(px(120.))
                         .child(MatrixPlotView { data: matrix.clone() })
                         .into_any_element(),
-                    PreparedOutput::Image { data, render_image } => input_card(cx)
+                    PreparedOutput::Image { data, render_image } => card(cx)
                         .child(image_element(data, render_image.clone()))
                         .into_any_element(),
                     PreparedOutput::Audio(player) => div()
@@ -454,7 +441,7 @@ impl Render for ReactiveView {
             .min_w_0()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap(GUTTER)
             .when(self.busy, |el| el.opacity(0.5))
             .children(error_block)
             .child(outputs_or_child);
@@ -462,7 +449,7 @@ impl Render for ReactiveView {
         div()
             .flex()
             .flex_row()
-            .gap_2()
+            .gap(GUTTER)
             .size_full()
             .child(sidebar)
             .child(content)

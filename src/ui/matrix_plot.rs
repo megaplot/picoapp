@@ -5,7 +5,8 @@ use gpui_kit::{fill, px, App, Bounds, ElementId, Pixels, Point, TextAlign, Windo
 
 use crate::outputs::MatrixPlot as MatrixPlotData;
 use crate::ui::color_utils::viridis;
-use crate::ui::plot_common::{format_tick, paint_panel, plot_colors};
+use crate::ui::plot_common::{format_tick, paint_panel};
+use crate::ui::style::plot_colors;
 use crate::ui::ticks::nice_ticks;
 
 #[derive(IntoPlot)]

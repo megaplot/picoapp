@@ -23,3 +23,14 @@ Notes:
 - To compare with another picoapp install (e.g. the cushy version), pass its
   python; with NVIDIA drivers set `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`
   for wgpu-based apps that need software presentation under Xvfb.
+
+## Real Wayland compositor (window decorations)
+
+Xvfb cannot show Wayland client-side decorations. `gnome_shot.sh` runs
+the app inside a private headless GNOME Shell (own D-Bus session, virtual
+monitor, `--unsafe-mode` so its Screenshot API is allowed) and screenshots it:
+
+```sh
+scripts/qa/gnome_shot.sh python examples/example_1.py /tmp/shot.png 8
+scripts/qa/gnome_shot.sh /path/to/other/venv/bin/python examples/example_1.py /tmp/other.png 9  # e.g. cushy
+```

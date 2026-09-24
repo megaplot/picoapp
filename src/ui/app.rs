@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui_kit::component::{ActiveTheme, Root, TitleBar, v_flex};
+use gpui_kit::component::{v_flex, ActiveTheme, Root, TitleBar};
 use gpui_kit::{
     App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Point, Render, Styled,
     TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
@@ -10,7 +10,9 @@ use pyo3::prelude::*;
 
 use crate::inputs::parse_inputs;
 use crate::logging_setup::setup_logging;
+use crate::ui::header_bar::HeaderBar;
 use crate::ui::reactive_view::ReactiveView;
+use crate::ui::style::GUTTER;
 use crate::utils::Callback;
 use crate::worker::spawn;
 
@@ -67,8 +69,14 @@ impl Render for AppShell {
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(TitleBar::new().child(APP_TITLE))
-            .child(div().flex_1().min_h_0().p_2().child(self.content.clone()))
+            .child(HeaderBar::new(APP_TITLE))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .p(GUTTER)
+                    .child(self.content.clone()),
+            )
     }
 }
 
@@ -81,7 +89,10 @@ pub fn run_ui(py: Python<'_>, input_objs: &[Bound<'_, PyAny>], callback: Callbac
 
     let worker = Arc::new(worker);
     py.allow_threads(move || {
-        gpui_kit::application().run(move |cx: &mut App| {
+        gpui_kit::application()
+            // Icons (checkmarks, window controls) are embedded SVG assets.
+            .with_assets(gpui_kit::assets::Assets)
+            .run(move |cx: &mut App| {
             gpui_kit::init(cx);
             // picoapp is deliberately dark: it suits its use case (studying
             // algorithms on plots) and matches the cushy version's look.

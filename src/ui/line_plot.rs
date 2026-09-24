@@ -8,7 +8,8 @@ use gpui_kit::component::plot::{
 use gpui_kit::{px, App, Bounds, ContentMask, ElementId, Pixels, TextAlign, Window};
 
 use crate::outputs::Plot as PlotData;
-use crate::ui::plot_common::{format_tick, paint_panel, plot_colors};
+use crate::ui::plot_common::{format_tick, paint_panel};
+use crate::ui::style::plot_colors;
 use crate::ui::ticks::nice_ticks;
 
 #[derive(IntoPlot)]

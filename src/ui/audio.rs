@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui_kit::component::button::Button;
-use gpui_kit::component::{h_flex, ActiveTheme};
+use gpui_kit::component::ActiveTheme;
+
+use crate::ui::style::{card, CONTROL_GAP};
 use gpui_kit::{div, px, relative, Context, IntoElement, ParentElement, Render, Styled, Window};
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 
@@ -166,13 +168,11 @@ impl Render for AudioPlayer {
         // component animates every value change, so the bar visibly ran
         // *backwards* when playback ended and the value reset to 0 (and
         // lagged behind the 16ms position updates while playing).
-        let theme = cx.theme();
-        h_flex()
-            .gap_3()
+        card(cx)
+            .flex()
+            .flex_row()
+            .gap(CONTROL_GAP)
             .items_center()
-            .p_3()
-            .rounded_md()
-            .bg(theme.group_box)
             .child(
                 // Fixed width: "Play" and "Pause" differ in width, which
                 // would otherwise resize the whole card on every toggle.
@@ -188,13 +188,13 @@ impl Render for AudioPlayer {
                     .w(px(200.))
                     .h(px(6.))
                     .rounded_full()
-                    .bg(theme.progress_bar.opacity(0.25))
+                    .bg(cx.theme().progress_bar.opacity(0.25))
                     .child(
                         div()
                             .h_full()
                             .w(relative(self.progress.clamp(0.0, 1.0)))
                             .rounded_full()
-                            .bg(theme.progress_bar),
+                            .bg(cx.theme().progress_bar),
                     ),
             )
     }
