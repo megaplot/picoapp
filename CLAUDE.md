@@ -44,14 +44,13 @@ System dependencies (Linux): `libasound2-dev`, `libdbus-1-dev`, `libxkbcommon-x1
 
 ```sh
 maturin develop --uv          # rebuild the Rust extension into the venv (REQUIRED after any src/*.rs change)
-cargo test                    # Rust side (no #[test]s exist yet, but CI runs it)
-pytest                        # Python tests
-pytest tests/test_input_parsing.py::test_parse_slider   # single test
-mypy . && flake8 && black --check . && isort --check .  # what CI checks
+./scripts/check_all           # everything CI checks, in the same order — must be green after every change
 python examples/example_1.py  # run an example app (needs a GPU/display)
 ```
 
 `maturin develop --uv && python examples/example_X.py` is the main iteration loop for anything touching Rust.
+
+`scripts/check_all` delegates to one script per CI step (`checks.yaml` delegates to the same scripts, so a green `check_all` locally means CI is green too): `check_rust_format` (`cargo fmt --check`), `check_rust_lint` (`cargo check` with warnings denied), `check_rust_test` (`cargo test`), `check_python_types` (`mypy .`), `check_python_lint` (`flake8`), `check_python_format` (`black --check . && isort --check .`), `check_python_test` (`pytest`), `check_integration_minimal_install` (installs into a throwaway venv with no dev deps). Run a single one directly while iterating on just that language/tool; run `check_all` before considering a change done.
 
 UI QA without a desktop session runs headlessly: an X11 path (Xvfb; screenshots *and* clicks/drags; the default) and a Wayland path (private GNOME Shell; screenshots only, for window decorations). `scripts/qa/README.md` says which to pick and how. Use it for any UI change instead of "the window opens without crashing" checks, which cannot catch interaction or rendering bugs.
 
@@ -63,6 +62,7 @@ Also: picoapp must print nothing by default (its stdout/stderr belong to the use
 
 - **Language**: Keep communication concise and self-critical. Avoid overusing figurative/generic/vague terms that require translation into something concrete specific. Avoid following the LLM langue entry collapse. Avoid overusing terms: once X lands, fold X into, load-bearing
 - **Ask before essential decisions.** When an issue could indicate an architectural/design flaw, describe options with pros/cons instead of hacking around it.
+- **Checks must be green.** Run `./scripts/check_all` after each code change (or the matching `scripts/check_*` script for a smaller, faster check while iterating) and don't consider the change done until it passes. This is the same suite CI runs; don't rely on CI to catch what a local run would have caught.
 - **Code reviews**: `ai/code_reviews.md` lists the review patterns agents are prone to (bad code placement, field/argument ordering, dropped comments, unnecessary renames/rewrites that bloat the diff against `main`). Follow it when writing code, and give it to any reviewer.
 - **Git rules**: Never `git push` by yourself or `git commit` on main. Commits on `main` are left for the human companion to give a chance of a last review. Committing on feature branches is fine. Never merge a feature branch into `main` yourself, locally or otherwise — the human companion always reviews a feature branch before it merges. This also means: when using the `superpowers` finishing-a-development-branch skill (or any equivalent finalize/wrap-up step), skip its menu and its merge/PR actions in this repo — just report the branch is done and stop; don't offer to merge or push.
 
@@ -82,9 +82,9 @@ Consequences to keep in mind:
 
 - Renaming or adding a private field on a Python input/output class silently breaks the Rust extractor. Both sides must change together.
 - Type dispatch is by **class-name string** (`obj.get_type().name()? == "Slider"`), not `isinstance`, so class names are part of the contract. Outputs currently mix this with structural duck typing (`Plot` is detected via `hasattr("xs")`, the rest by name) — a known inconsistency flagged in `src/outputs.rs`.
-- `LevelResult`'s `Nested` case is also duck-typed: anything callable with an `inputs` attribute is treated as a `ReactiveBase`.
+- `CallbackReturn`'s `Inputs` case is also duck-typed: anything callable with an `inputs` attribute is treated as a `ReactiveBase`.
 
-Adding a new **input** type touches: `_types_inputs.py` (class + `Input` union), `__init__.py` (re-export), `src/inputs/<name>.rs` (the `<Name>Spec`/`<Name>Binding`/`parse_<name>` split — see below), the `InputSpec`/`InputBinding`/`InputValue` enums in `src/inputs/mod.rs`, a render function in `src/ui/inputs.rs`, and the matches in `src/ui/reactive_view.rs`.
+Adding a new **input** type touches: `_types_inputs.py` (class + `Input` union), `__init__.py` (re-export), `src/inputs/<name>.rs` (the `FromPyObject` impl plus a `<Name>Spec` and an `into_parts` split — see below), the `Input`/`InputSpec`/`InputBinding`/`InputValue` enums and `split_inputs` in `src/inputs/mod.rs`, a render function in `src/ui/inputs.rs`, and the matches in `src/ui/reactive_view.rs`.
 
 Adding a new **output** type touches: `_types_outputs.py` (class + `Output` union), `__init__.py`, the struct + `parse_output` in `src/outputs.rs`, a `src/ui/<name>.rs`, the `PreparedOutput` enum + its match arms in `src/ui/reactive_view.rs`.
 
@@ -92,7 +92,7 @@ Adding a new **output** type touches: `_types_outputs.py` (class + `Output` unio
 
 No `Py` object ever reaches the UI thread. Parsing an input produces two halves: an `InputSpec` (plain Rust — name, min/max/init, …) sent to the UI, and an `InputBinding` (holds the `PyObject` handle used to write `_value`) that stays on the worker. `InputValue` is what the UI sends back to the worker to write.
 
-A single `picoapp-worker` thread (`src/worker.rs`) owns a `Registry` of `LevelId -> (bindings, callback)` and processes `Job::Run`/`Job::Drop` messages sent over an `mpsc` channel from `WorkerHandle`. It's the only thread that ever calls into Python — it writes each input's `_value`, calls the callback, and parses the return via `parse_level_result` (`src/outputs.rs`), which never surfaces a raw `PyErr`: a raised exception becomes `LevelResult::Error(message + traceback)` (also printed to stderr) and a callback that returns another `ReactiveBase` becomes `LevelResult::Nested`, registering the new level's bindings before anything crosses to the UI as `UiLevelResult`.
+A single `picoapp-worker` thread (`src/worker.rs`) owns a `Registry` of `LevelId -> (bindings, callback)` and processes `Job::Run`/`Job::Drop` messages sent over an `mpsc` channel from `WorkerHandle`. It's the only thread that ever calls into Python — `Registry::run_job` writes each input's `_value`, calls the callback, and parses the return via `parse_callback_return` (`src/outputs.rs`): a raised exception or parse failure becomes `UiLevelResult::Error(message + traceback)` (never printed to stderr: picoapp must print nothing by default, see above) and a `CallbackReturn::Inputs` (the callback returned another `ReactiveBase`) becomes `UiLevelResult::Nested`, registering the new level's bindings before anything crosses to the UI.
 
 `ReactiveView` (`src/ui/reactive_view.rs`) is one gpui `Entity` per reactive level — the root and each nested `ReactiveBase` — each holding a `RunScheduler` (`src/ui/run_scheduler.rs`, pure Rust, no gpui/pyo3 types). An input change goes through `RunScheduler::on_change`: if nothing is in flight it dispatches a `Job::Run` immediately; if a job is already running, the change is coalesced (latest value wins, no queue) and redispatched from `RunScheduler::on_result` once the in-flight job's reply arrives. The very first job for a level (root or nested) goes through `RunScheduler::start()` + `dispatch()` the same way, so every Python call — including the first — runs on the worker thread, not on the thread that constructed the view.
 
@@ -104,12 +104,13 @@ Styling: `src/ui/style.rs` is the design system — the dark palette (applied to
 
 GIL handling: the worker thread acquires the GIL per job (`Python::with_gil`) and releases it between jobs; `run_ui` releases the GIL with `py.allow_threads` for the whole gpui event loop, which never touches Python directly.
 
-UI stack: [gpui-kit](https://gpui-kit.com/) (`gpui-kit = "=0.6.6"`, pinned exactly — each release pins a different `gpui` snapshot) on gpui/wgpu; plots (`src/ui/line_plot.rs`, `src/ui/matrix_plot.rs`) are custom `gpui_component::plot::Plot` implementations built on `ScaleLinear`/`Line`/`PlotAxis`/`Grid`, not plotters; audio playback via `rodio`; images go through gpui's `RenderImage` (swizzled to BGRA — see `src/outputs.rs`'s `rgba_to_bgra` and its ledger note in `docs/superpowers/specs/2026-09-22-gpui-migration-design.md`).
+UI stack: [gpui-kit](https://gpui-kit.com/) (`gpui-kit = "=0.6.6"`, pinned exactly — each release pins a different `gpui` snapshot) on gpui/wgpu; plots (`src/ui/line_plot.rs`, `src/ui/matrix_plot.rs`) are custom `gpui_component::plot::Plot` implementations built on `ScaleLinear`/`Line`/`PlotAxis`/`Grid`, not plotters; audio playback via `rodio`; images go through gpui's `RenderImage` (swizzled to BGRA — see `src/outputs.rs`'s `rgba_to_bgra`, called from `parse_output`).
 
 ## Known gaps
 
 - Despite the zero-copy goal, output data is currently *copied* across the boundary via `extract::<Vec<f64>>()`. The `rust-numpy`/buffer-protocol path is a TODO in `src/outputs.rs`.
 - `pyproject.toml` duplicates `requirements.in` because maturin does not support dynamic dependencies ([PyO3/maturin#1537](https://github.com/PyO3/maturin/issues/1537)).
+- `pa.run()` never returns on macOS: gpui's default `QuitMode` there is `Explicit`, so closing the last window doesn't end the app's `run` loop. Untested on Windows.
 
 # Conventions
 
