@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Installs picoapp into a throwaway venv with none of the dev tooling, to
+# catch packaging regressions (missing runtime deps, broken metadata) that
+# the main dev venv wouldn't surface. Mirrors the "Integration test" CI step.
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+scratch_dir="$(mktemp -d)"
+trap 'rm -rf "$scratch_dir"' EXIT
+
+uv venv "$scratch_dir/venv"
+. "$scratch_dir/venv/bin/activate"
+uv pip install .
+uv pip freeze
+
+python -c "import picoapp"

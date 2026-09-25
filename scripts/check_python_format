@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Checks Python formatting. Mirrors the "Python: Check format" CI step.
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+if [[ -z "$VENV_DIR" ]]; then
+    echo "\$VENV_DIR must be set (source env.sh first)" 1>&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+black --check .
+isort --check .
