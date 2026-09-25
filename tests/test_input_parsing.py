@@ -48,6 +48,39 @@ def test_worker_job_writes_value_and_returns_outputs():
     assert slider.value == 7.5
 
 
+def test_worker_job_writes_int_slider_value():
+    slider = pa.IntSlider("n", min=0, init=1, max=10)
+
+    def callback():
+        return pa.Outputs()
+
+    result = _run_worker_job([slider], callback, [7])
+    assert result == "Outputs(0)"
+    assert slider.value == 7
+
+
+def test_worker_job_writes_checkbox_value():
+    checkbox = pa.Checkbox("c", init=False)
+
+    def callback():
+        return pa.Outputs()
+
+    result = _run_worker_job([checkbox], callback, [True])
+    assert result == "Outputs(0)"
+    assert checkbox.value is True
+
+
+def test_worker_job_writes_radio_value_by_index():
+    radio = pa.Radio("r", values=["foo", "bar", "baz"])
+
+    def callback():
+        return pa.Outputs()
+
+    result = _run_worker_job([radio], callback, [2])
+    assert result == "Outputs(0)"
+    assert radio.value == "baz"
+
+
 def test_worker_job_returns_nested():
     outer = pa.IntSlider("n", min=1, init=2, max=5)
 
