@@ -11,3 +11,7 @@ dist/
 python/**/*.so
 
 target/
+
+# Implementation plans are working documents for agentic execution;
+# only specs (docs/superpowers/specs/) are committed.
+/docs/superpowers/plans/

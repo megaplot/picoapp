@@ -1,4 +1,4 @@
-use plotters::prelude::RGBAColor;
+use gpui_kit::Rgba;
 
 /// Lookup the Viridis color for a given value in the interval [0.0, 1.0].
 /// The color is interpolated linearly between the 255 colors.
@@ -16,7 +16,7 @@ use plotters::prelude::RGBAColor;
 /// print(colors)
 /// ```
 ///
-pub fn get_viridis_color(x: f64) -> RGBAColor {
+pub fn viridis(x: f64) -> Rgba {
     // List of Viridis colors (255 colors as hex strings)
     const VIRIDIS: [&str; 255] = [
         "#440154", "#440255", "#440357", "#450558", "#45065a", "#45085b", "#46095c", "#460b5e",
@@ -70,7 +70,12 @@ pub fn get_viridis_color(x: f64) -> RGBAColor {
     let g = (1.0 - t) * color1.1 as f64 + t * color2.1 as f64;
     let b = (1.0 - t) * color1.2 as f64 + t * color2.2 as f64;
 
-    RGBAColor(r.round() as u8, g.round() as u8, b.round() as u8, 1.0)
+    Rgba {
+        r: (r.round() as u8) as f32 / 255.0,
+        g: (g.round() as u8) as f32 / 255.0,
+        b: (b.round() as u8) as f32 / 255.0,
+        a: 1.0,
+    }
 }
 
 /// Convert a hex color string (e.g., "#112233") to an (r, g, b) tuple.
@@ -79,4 +84,28 @@ fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
     let g = u8::from_str_radix(&hex[3..5], 16).unwrap();
     let b = u8::from_str_radix(&hex[5..7], 16).unwrap();
     (r, g, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn endpoints_match_known_viridis_colors() {
+        let low = viridis(0.0);
+        assert_eq!((low.r * 255.0).round() as u8, 0x44);
+        assert_eq!((low.g * 255.0).round() as u8, 0x01);
+        assert_eq!((low.b * 255.0).round() as u8, 0x54);
+
+        let high = viridis(1.0);
+        assert_eq!((high.r * 255.0).round() as u8, 0xfd);
+        assert_eq!((high.g * 255.0).round() as u8, 0xe7);
+        assert_eq!((high.b * 255.0).round() as u8, 0x24);
+    }
+
+    #[test]
+    fn clamps_out_of_range_input() {
+        assert_eq!(viridis(-1.0), viridis(0.0));
+        assert_eq!(viridis(2.0), viridis(1.0));
+    }
 }

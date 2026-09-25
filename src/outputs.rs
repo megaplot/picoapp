@@ -3,7 +3,7 @@ use std::ops::Range;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use crate::inputs::Inputs;
+use crate::inputs::{parse_inputs, InputBinding, InputSpec};
 use crate::utils::Callback;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,9 +37,21 @@ impl Audio {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Image {
+    /// Pixel data in **BGRA** order (swizzled from the RGBA the Python side
+    /// produces), ready for `gpui`'s `RenderImage`.
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
+}
+
+/// Swizzles a flat RGBA byte buffer to BGRA in place semantics (returns a
+/// new Vec), which is the pixel format gpui's `RenderImage` expects.
+pub fn rgba_to_bgra(rgba: &[u8]) -> Vec<u8> {
+    let mut out = rgba.to_vec();
+    for px in out.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    out
 }
 
 pub enum Output {
@@ -49,47 +61,80 @@ pub enum Output {
     Image(Image),
 }
 
-pub enum CallbackReturn {
+pub enum LevelResult {
     Outputs(Vec<Output>),
-    Inputs(Inputs, Callback),
+    Nested {
+        specs: Vec<InputSpec>,
+        bindings: Vec<InputBinding>,
+        callback: Callback,
+    },
+    Error(String),
+    Discarded,
 }
 
-impl PartialEq for CallbackReturn {
-    fn eq(&self, _other: &Self) -> bool {
-        // PartialEq is need for setting a `Dynamic`. In this use case, we probably want
-        // to assume that each invocation of the callback returns a different result (which
-        // is probably true any if an `PyFunction` is involved). Even if the returned value
-        // would be the same, there is no real harm in re-updating the UI. In terms of performance
-        // the evaluation of the callback itself probably outweighs the UI update anyway.
-        false
+/// Formats a PyErr's message and traceback for display in the UI.
+///
+/// Deliberately does not print anything: the UI shows the error, and a
+/// picoapp's stdout/stderr belong to the user's own callback (nothing by
+/// default).
+///
+/// `PyErr::display` (pyo3 0.22) only prints to stderr and returns `()`, and
+/// `PyErr`'s `Display` impl gives just "ExceptionType: message" with no
+/// traceback, so the traceback is formatted separately via `PyTraceback::format`
+/// and appended when present.
+pub fn format_traceback(py: Python<'_>, err: &PyErr) -> String {
+    let message = err.to_string();
+    match err.traceback_bound(py).and_then(|tb| tb.format().ok()) {
+        Some(frames) => format!("{message}\n\n{frames}"),
+        None => message,
     }
 }
 
-pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<CallbackReturn> {
+/// Parses a callback's return value. Never returns a `PyErr` to the caller:
+/// any parsing failure (including the callback itself having raised) is
+/// folded into `LevelResult::Error` so the worker has one uniform result
+/// shape.
+pub fn parse_level_result(py: Python<'_>, cb_return: PyResult<PyObject>) -> LevelResult {
+    let cb_return = match cb_return {
+        Ok(v) => v,
+        Err(err) => return LevelResult::Error(format_traceback(py, &err)),
+    };
+
+    match parse_level_result_inner(py, cb_return) {
+        Ok(result) => result,
+        Err(err) => LevelResult::Error(format_traceback(py, &err)),
+    }
+}
+
+fn parse_level_result_inner(py: Python<'_>, cb_return: PyObject) -> PyResult<LevelResult> {
     let cb_return = cb_return.bind(py);
     if cb_return.get_type().name()? == "Outputs" {
-        return Ok(CallbackReturn::Outputs(parse_outputs(
+        Ok(LevelResult::Outputs(parse_outputs(
             py,
             cb_return.getattr("outputs")?.into(),
-        )?));
-    } else {
-        // Approximate interface of 'Reactive' (duck typing style). In principle it would be
-        // nice to be able to use the equivalent of `instance(cb_return, ReactiveBase)`. The
-        // challenge is how to obtain the reference to the `ReactiveBase` type. Options:
-        // * Importing it from Python would add a weird reverse import direction.
-        // * Passing the type itself in from Python may look a bit weird as well, but
-        //   perhaps this is the way to go, especially since we could leverage that
-        //   pattern in other places as well (where we want nominal typing).
-        if cb_return.is_callable() && cb_return.hasattr("inputs")? {
-            let inputs = cb_return.getattr("inputs")?.getattr("inputs")?.extract()?;
-            let callback: Callback = cb_return.getattr("__call__")?.extract()?;
-            return Ok(CallbackReturn::Inputs(inputs, callback));
-        } else {
-            return Err(PyValueError::new_err(format!(
-                "Invalid callback return type: {:?}",
-                cb_return.get_type().name()?
-            )));
+        )?))
+    } else if cb_return.is_callable() && cb_return.hasattr("inputs")? {
+        // Approximate interface of `ReactiveBase` (duck typing, see mod-level
+        // note in the original implementation for why nominal typing isn't
+        // used here).
+        let raw_inputs = cb_return.getattr("inputs")?.getattr("inputs")?;
+        let raw_inputs = raw_inputs.downcast::<pyo3::types::PySequence>()?;
+        let mut objs = Vec::new();
+        for item in raw_inputs.iter()? {
+            objs.push(item?);
         }
+        let (specs, bindings) = parse_inputs(&objs)?;
+        let callback: Callback = cb_return.getattr("__call__")?.extract()?;
+        Ok(LevelResult::Nested {
+            specs,
+            bindings,
+            callback,
+        })
+    } else {
+        Err(PyValueError::new_err(format!(
+            "Invalid callback return type: {:?}",
+            cb_return.get_type().name()?
+        )))
     }
 }
 
@@ -146,7 +191,7 @@ fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
         let width: u32 = object.getattr("width")?.extract()?;
         let height: u32 = object.getattr("height")?.extract()?;
         Ok(Output::Image(Image {
-            data,
+            data: rgba_to_bgra(&data),
             width,
             height,
         }))
@@ -155,5 +200,25 @@ fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
             "Invalid output type: {:?}",
             object.get_type().name()?
         )));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_output_image_field_is_bgra_after_swizzle() {
+        // 1x1 red pixel, alpha 128: RGBA = [255, 0, 0, 128]
+        let rgba = vec![255u8, 0, 0, 128];
+        let bgra = rgba_to_bgra(&rgba);
+        assert_eq!(bgra, vec![0, 0, 255, 128]);
+    }
+
+    #[test]
+    fn swizzle_handles_multiple_pixels() {
+        let rgba = vec![10, 20, 30, 40, 50, 60, 70, 80];
+        let bgra = rgba_to_bgra(&rgba);
+        assert_eq!(bgra, vec![30, 20, 10, 40, 70, 60, 50, 80]);
     }
 }
