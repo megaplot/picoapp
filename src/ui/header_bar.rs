@@ -13,9 +13,9 @@
 
 use gpui_kit::component::{ActiveTheme, Icon, IconName, InteractiveElementExt as _, Sizable};
 use gpui_kit::{
-    div, prelude::FluentBuilder, px, App, ClickEvent, Context, Decorations, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, RenderOnce, SharedString,
-    StatefulInteractiveElement, Styled, Window,
+    App, ClickEvent, Context, Decorations, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Render, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, prelude::FluentBuilder, px,
 };
 
 use crate::ui::style::{CONTROL_GAP, HEADER_HEIGHT};
@@ -52,7 +52,12 @@ enum Control {
     Close,
 }
 
-fn control_button(id: &'static str, icon: IconName, control: Control, cx: &App) -> impl IntoElement {
+fn control_button(
+    id: &'static str,
+    icon: IconName,
+    control: Control,
+    cx: &App,
+) -> impl IntoElement {
     let theme = cx.theme();
     let (hover_bg, hover_fg) = match control {
         Control::Close => (theme.danger, theme.danger_foreground),
@@ -103,7 +108,12 @@ impl RenderOnce for HeaderBar {
             .w(controls_width)
             .justify_end()
             .when(supported.minimize, |el| {
-                el.child(control_button("minimize", IconName::WindowMinimize, Control::Minimize, cx))
+                el.child(control_button(
+                    "minimize",
+                    IconName::WindowMinimize,
+                    Control::Minimize,
+                    cx,
+                ))
             })
             .when(supported.maximize, |el| {
                 let icon = if maximized {
@@ -113,7 +123,12 @@ impl RenderOnce for HeaderBar {
                 };
                 el.child(control_button("maximize", icon, Control::Maximize, cx))
             })
-            .child(control_button("close", IconName::WindowClose, Control::Close, cx));
+            .child(control_button(
+                "close",
+                IconName::WindowClose,
+                Control::Close,
+                cx,
+            ));
 
         div()
             .id("header-bar")
