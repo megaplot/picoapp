@@ -2,16 +2,21 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use gpui_kit::component::button::Button;
 use gpui_kit::component::ActiveTheme;
+use gpui_kit::component::button::Button;
 
-use crate::ui::style::{card, CONTROL_GAP};
-use gpui_kit::{div, px, relative, Context, IntoElement, ParentElement, Render, Styled, Window};
+use crate::ui::style::{CONTROL_GAP, card};
+use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div, px, relative};
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 
 use crate::outputs::Audio;
 
 thread_local! {
+    // Note that the `OutputStream` must be kept alive as long as the `Sink` is
+    // in use. Since an `OutputStream` is not `Send`, it doesn't really make
+    // sense to hold an `(OutputStream, Sink)` below, because we wouldn't be
+    // able to use it from the monitoring thread. It's probably best to share
+    // the output stream via thread-local storage.
     static STREAM: RefCell<Option<(OutputStream, OutputStreamHandle)>> = RefCell::new(None);
 }
 
@@ -65,6 +70,11 @@ impl rodio::Source for AudioWrapper {
     fn total_duration(&self) -> Option<Duration> {
         None
     }
+    #[inline]
+    fn try_seek(&mut self, _: Duration) -> Result<(), rodio::source::SeekError> {
+        // TBD how to handle it (since we don't seek for now, it should not matter).
+        Ok(())
+    }
 }
 
 pub struct AudioPlayer {
@@ -75,7 +85,7 @@ pub struct AudioPlayer {
 }
 
 impl AudioPlayer {
-    pub fn new(audio: Audio, _cx: &mut Context<Self>) -> Self {
+    pub fn new(audio: Audio) -> Self {
         let stream_handle = get_output_stream_handle();
         let sink = Sink::try_new(&stream_handle).unwrap();
 
@@ -97,32 +107,41 @@ impl AudioPlayer {
     fn start_progress_polling(&mut self, cx: &mut Context<Self>) {
         let sink_for_task = self.sink.clone();
         let total = self.audio.length_in_sec();
-        cx.spawn(async move |this, cx| loop {
-            cx.background_executor()
-                .timer(Duration::from_millis(16))
-                .await;
-            let (playing, elapsed_fraction) = {
-                let sink = sink_for_task.lock().unwrap();
-                if sink.empty() {
-                    (false, 0.0)
-                } else {
-                    let pos = sink.get_pos().as_secs_f32();
-                    (true, (pos / total.max(1e-6)).clamp(0.0, 1.0))
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(16))
+                    .await;
+                let (playing, elapsed_fraction) = {
+                    let sink = sink_for_task.lock().unwrap();
+                    if sink.empty() {
+                        (false, 0.0)
+                    } else {
+                        // A paused sink isn't `empty()`, so it must be checked
+                        // separately — otherwise `playing` flips back to `true`
+                        // within one tick of pausing (`toggle`'s own `pause()`
+                        // call already set it to `false`), and the button label
+                        // never leaves "Pause". `get_pos()` still reflects the
+                        // frozen position while paused, so the bar doesn't jump.
+                        let paused = sink.is_paused();
+                        let pos = sink.get_pos().as_secs_f32();
+                        (!paused, (pos / total.max(1e-6)).clamp(0.0, 1.0))
+                    }
+                };
+                let should_stop = this
+                    .update(cx, |this, cx| {
+                        this.playing = playing;
+                        // `elapsed_fraction` is 0.0 once the sink is empty, i.e.
+                        // when playback has ended: the bar resets at once (see
+                        // `Render`, which draws it without any animation).
+                        this.progress = elapsed_fraction;
+                        cx.notify();
+                        !playing
+                    })
+                    .unwrap_or(true);
+                if should_stop {
+                    break;
                 }
-            };
-            let should_stop = this
-                .update(cx, |this, cx| {
-                    this.playing = playing;
-                    // `elapsed_fraction` is 0.0 once the sink is empty, i.e.
-                    // when playback has ended: the bar resets at once (see
-                    // `Render`, which draws it without any animation).
-                    this.progress = elapsed_fraction;
-                    cx.notify();
-                    !playing
-                })
-                .unwrap_or(true);
-            if should_stop {
-                break;
             }
         })
         .detach();

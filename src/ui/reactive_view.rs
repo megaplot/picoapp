@@ -1,41 +1,41 @@
 use std::sync::Arc;
 
+use gpui_kit::component::slider::{SliderEvent, SliderState};
 use gpui_kit::gpui::prelude::FluentBuilder;
 use gpui_kit::{
-    div, px, AppContext, Context, Entity, InteractiveElement, StatefulInteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
+    AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+    RenderImage, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 
-use crate::inputs::{InputSpec, InputValue};
-use crate::outputs::Output;
+use crate::inputs::{CheckboxSpec, InputSpec, InputValue, RadioSpec, SliderSpec};
+use crate::outputs::{Image as ImageData, MatrixPlot as MatrixPlotData, Output, Plot as PlotData};
 use crate::ui::audio::AudioPlayer;
 use crate::ui::image::{build_render_image, drop_images, image_element};
 use crate::ui::inputs::{
-    make_int_slider_state, make_slider_state, render_checkbox, render_int_slider_row,
-    render_radio, render_slider_row,
+    make_int_slider_state, make_slider_state, render_checkbox, render_int_slider_row, render_radio,
+    render_slider_row,
 };
 use crate::ui::line_plot::LinePlot;
 use crate::ui::matrix_plot::MatrixPlotView;
 use crate::ui::run_scheduler::RunScheduler;
-use crate::ui::style::{
-    card, error_card, muted_text, CONTROL_GAP, GUTTER, SIDEBAR_WIDTH,
-};
+use crate::ui::style::{CONTROL_GAP, GUTTER, SIDEBAR_WIDTH, card, error_card, muted_text};
 use crate::worker::{Job, LevelId, UiLevelResult, WorkerHandle};
 
 enum InputWidgetState {
     Slider {
-        spec: crate::inputs::SliderSpec<f64>,
-        state: Entity<gpui_kit::component::slider::SliderState>,
+        spec: SliderSpec<f64>,
+        state: Entity<SliderState>,
     },
     IntSlider {
-        spec: crate::inputs::SliderSpec<i64>,
-        state: Entity<gpui_kit::component::slider::SliderState>,
+        spec: SliderSpec<i64>,
+        state: Entity<SliderState>,
     },
     Checkbox {
-        spec: crate::inputs::CheckboxSpec,
+        spec: CheckboxSpec,
         checked: bool,
     },
     Radio {
-        spec: crate::inputs::RadioSpec,
+        spec: RadioSpec,
         selected: usize,
     },
 }
@@ -50,11 +50,11 @@ enum InputWidgetState {
 /// would upload a fresh image every frame and restart audio playback on
 /// every unrelated redraw.
 enum PreparedOutput {
-    Plot(Arc<crate::outputs::Plot>),
-    MatrixPlot(Arc<crate::outputs::MatrixPlot>),
+    Plot(Arc<PlotData>),
+    MatrixPlot(Arc<MatrixPlotData>),
     Image {
-        data: crate::outputs::Image,
-        render_image: Arc<gpui_kit::RenderImage>,
+        data: ImageData,
+        render_image: Arc<RenderImage>,
     },
     Audio(Entity<AudioPlayer>),
 }
@@ -81,12 +81,17 @@ pub struct ReactiveView {
     // sprite atlas on the next `render()` call (which is the first place
     // after `apply_result` that has a `&mut Window` to call
     // `window.drop_image` with).
-    pending_image_drops: Vec<Arc<gpui_kit::RenderImage>>,
+    pending_image_drops: Vec<Arc<RenderImage>>,
     child: Option<Entity<ReactiveView>>,
-    awaiting: usize,
+    next_job_id: u64,
+    // `Some(id)` of the currently dispatched job, or `None` when idle.
+    // Tracked by id rather than just a bool/counter so the delayed busy
+    // timer below can tell "my own job is still running" from "some job
+    // happens to be running" — see `dispatch`.
+    in_flight_job: Option<u64>,
     busy: bool,
     error: Option<String>,
-    _subscriptions: Vec<gpui_kit::Subscription>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl ReactiveView {
@@ -109,21 +114,23 @@ impl ReactiveView {
             match spec {
                 InputSpec::Slider(s) => {
                     let state = cx.new(|_| make_slider_state(&s));
-                    let sub = cx.subscribe(&state, move |this: &mut ReactiveView, _state, event, cx| {
-                        if let gpui_kit::component::slider::SliderEvent::Change(value) = event {
-                            this.on_input_changed(i, InputValue::F64(value.start() as f64), cx);
-                        }
-                    });
+                    let sub =
+                        cx.subscribe(&state, move |this: &mut ReactiveView, _state, event, cx| {
+                            if let SliderEvent::Change(value) = event {
+                                this.on_input_changed(i, InputValue::F64(value.start() as f64), cx);
+                            }
+                        });
                     subscriptions.push(sub);
                     widgets.push(InputWidgetState::Slider { spec: s, state });
                 }
                 InputSpec::IntSlider(s) => {
                     let state = cx.new(|_| make_int_slider_state(&s));
-                    let sub = cx.subscribe(&state, move |this: &mut ReactiveView, _state, event, cx| {
-                        if let gpui_kit::component::slider::SliderEvent::Change(value) = event {
-                            this.on_input_changed(i, InputValue::I64(value.start() as i64), cx);
-                        }
-                    });
+                    let sub =
+                        cx.subscribe(&state, move |this: &mut ReactiveView, _state, event, cx| {
+                            if let SliderEvent::Change(value) = event {
+                                this.on_input_changed(i, InputValue::I64(value.start() as i64), cx);
+                            }
+                        });
                     subscriptions.push(sub);
                     widgets.push(InputWidgetState::IntSlider { spec: s, state });
                 }
@@ -151,10 +158,25 @@ impl ReactiveView {
         // its last reference, gpui fires *its* on_release the same way.
         let level_for_release = level;
         let worker_for_release = worker.clone();
-        let release_sub = cx.on_release(move |_this, _app_cx| {
+        let release_sub = cx.on_release(move |this, app_cx| {
             worker_for_release.send(Job::Drop {
                 level: level_for_release,
             });
+            // `render()` only frees images superseded by a newer result of
+            // the *same* level (see `pending_image_drops`'s doc comment);
+            // whatever this level still holds when it's released — a
+            // pending drop that never got a render pass, or a live output —
+            // would otherwise leak in the sprite atlas forever. `App`'s
+            // `drop_image` (not `Window`'s): no `&mut Window` is available
+            // here, and this removes the texture from every window anyway.
+            for image in this.pending_image_drops.drain(..) {
+                app_cx.drop_image(image, None);
+            }
+            for output in this.outputs.drain(..) {
+                if let PreparedOutput::Image { render_image, .. } = output {
+                    app_cx.drop_image(render_image, None);
+                }
+            }
         });
         subscriptions.push(release_sub);
 
@@ -166,7 +188,8 @@ impl ReactiveView {
             outputs: Vec::new(),
             pending_image_drops: Vec::new(),
             child: None,
-            awaiting: 0,
+            next_job_id: 0,
+            in_flight_job: None,
             busy: false,
             error: None,
             _subscriptions: subscriptions,
@@ -191,6 +214,10 @@ impl ReactiveView {
     }
 
     fn dispatch(&mut self, values: Vec<InputValue>, cx: &mut Context<Self>) {
+        let job_id = self.next_job_id;
+        self.next_job_id += 1;
+        self.in_flight_job = Some(job_id);
+
         let (tx, rx) = futures::channel::oneshot::channel();
         self.worker.send(Job::Run {
             level: self.level,
@@ -199,13 +226,16 @@ impl ReactiveView {
         });
 
         // Only show the busy indicator if the job is still running after
-        // ~150ms, so fast callbacks don't flicker.
+        // ~150ms, so fast callbacks don't flicker. Checked by `job_id`
+        // rather than "is *a* job in flight": without that, a fast
+        // follow-up job could get dimmed right away by a timer left over
+        // from the job before it, which already finished within 150ms.
         cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(std::time::Duration::from_millis(150))
                 .await;
             let _ = this.update(cx, |this, cx| {
-                if this.awaiting > 0 {
+                if this.in_flight_job == Some(job_id) {
                     this.busy = true;
                     cx.notify();
                 }
@@ -213,7 +243,6 @@ impl ReactiveView {
         })
         .detach();
 
-        self.awaiting += 1;
         // Captured separately from `self` so a `Nested` result can still be
         // cleaned up on the worker even if this view is released before
         // the reply arrives (see below).
@@ -223,8 +252,8 @@ impl ReactiveView {
                 // Worker panicked mid-job: pending reply never arrives as
                 // Ok. Show "worker terminated" instead of hanging.
                 let _ = this.update(cx, |this, cx| {
-                    this.awaiting -= 1;
-                    this.busy = this.awaiting > 0;
+                    this.in_flight_job = None;
+                    this.busy = false;
                     this.error = Some("worker terminated".to_string());
                     cx.notify();
                 });
@@ -243,8 +272,8 @@ impl ReactiveView {
             };
 
             let applied = this.update(cx, |this, cx| {
-                this.awaiting -= 1;
-                this.busy = this.awaiting > 0;
+                this.in_flight_job = None;
+                this.busy = false;
                 this.apply_result(result, cx);
                 let followup = this.scheduler.on_result();
                 cx.notify();
@@ -312,9 +341,7 @@ impl ReactiveView {
                     let render_image = build_render_image(&data);
                     PreparedOutput::Image { data, render_image }
                 }
-                Output::Audio(audio) => {
-                    PreparedOutput::Audio(cx.new(|cx| AudioPlayer::new(audio, cx)))
-                }
+                Output::Audio(audio) => PreparedOutput::Audio(cx.new(|_| AudioPlayer::new(audio))),
             })
             .collect();
     }
@@ -383,7 +410,12 @@ impl Render for ReactiveView {
                         .flex()
                         .flex_col()
                         .gap(CONTROL_GAP)
-                        .child(div().text_sm().text_color(muted_text(cx)).child(spec.name.clone()))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted_text(cx))
+                                .child(spec.name.clone()),
+                        )
                         .child(render_radio(("input", i), spec, Some(*selected), {
                             let entity = cx.entity();
                             move |v, _window, cx| {
@@ -402,7 +434,11 @@ impl Render for ReactiveView {
             .map(|msg| error_card(msg.clone(), cx).into_any_element());
 
         let outputs_or_child = if let Some(child) = &self.child {
-            div().flex_1().min_w_0().child(child.clone()).into_any_element()
+            div()
+                .flex_1()
+                .min_w_0()
+                .child(child.clone())
+                .into_any_element()
         } else {
             div()
                 .flex_1()
@@ -410,25 +446,29 @@ impl Render for ReactiveView {
                 .flex()
                 .flex_col()
                 .gap(GUTTER)
-                .children(self.outputs.iter().map(|output| match output {
-                    PreparedOutput::Plot(plot) => div()
-                        .flex_1()
-                        .min_h(px(120.))
-                        .child(LinePlot { data: plot.clone() })
-                        .into_any_element(),
-                    PreparedOutput::MatrixPlot(matrix) => div()
-                        .flex_1()
-                        .min_h(px(120.))
-                        .child(MatrixPlotView { data: matrix.clone() })
-                        .into_any_element(),
-                    PreparedOutput::Image { data, render_image } => card(cx)
-                        .child(image_element(data, render_image.clone()))
-                        .into_any_element(),
-                    PreparedOutput::Audio(player) => div()
-                        .flex()
-                        .justify_center()
-                        .child(player.clone())
-                        .into_any_element(),
+                .children(self.outputs.iter().map(|output| {
+                    match output {
+                        PreparedOutput::Plot(plot) => div()
+                            .flex_1()
+                            .min_h(px(120.))
+                            .child(LinePlot { data: plot.clone() })
+                            .into_any_element(),
+                        PreparedOutput::MatrixPlot(matrix) => div()
+                            .flex_1()
+                            .min_h(px(120.))
+                            .child(MatrixPlotView {
+                                data: matrix.clone(),
+                            })
+                            .into_any_element(),
+                        PreparedOutput::Image { data, render_image } => card(cx)
+                            .child(image_element(data, render_image.clone()))
+                            .into_any_element(),
+                        PreparedOutput::Audio(player) => div()
+                            .flex()
+                            .justify_center()
+                            .child(player.clone())
+                            .into_any_element(),
+                    }
                 }))
                 .into_any_element()
         };
