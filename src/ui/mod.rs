@@ -9,7 +9,7 @@ mod matrix_plot;
 mod plot_common;
 mod reactive_view;
 mod run_scheduler;
-pub(crate) mod style;
+mod style;
 mod ticks;
 
 pub use app::run_ui;

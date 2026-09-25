@@ -2,12 +2,10 @@ use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::radio::RadioGroup;
 use gpui_kit::component::slider::{Slider, SliderScale, SliderState};
 use gpui_kit::component::{h_flex, v_flex};
-use gpui_kit::{
-    div, App, Context, ElementId, Entity, IntoElement, ParentElement, Styled, Window,
-};
+use gpui_kit::{App, ElementId, Entity, IntoElement, ParentElement, Styled, Window, div};
 
 use crate::inputs::{CheckboxSpec, RadioSpec, SliderSpec};
-use crate::ui::style::{muted_text, CONTROL_GAP};
+use crate::ui::style::{CONTROL_GAP, muted_text};
 
 pub fn make_slider_state(spec: &SliderSpec<f64>) -> SliderState {
     // `SliderState`'s own default step is 1.0 (a whole number), which would
@@ -54,23 +52,27 @@ fn slider_header(name: &str, value: String, cx: &App) -> impl IntoElement {
         .child(div().text_color(muted_text(cx)).child(value))
 }
 
-pub fn render_slider_row<T: 'static>(
+pub fn render_slider_row(
     spec: &SliderSpec<f64>,
     state: &Entity<SliderState>,
     value: f32,
-    cx: &mut Context<T>,
+    cx: &App,
 ) -> impl IntoElement {
     v_flex()
         .gap(CONTROL_GAP)
-        .child(slider_header(&spec.name, format_slider_value(spec, value), cx))
+        .child(slider_header(
+            &spec.name,
+            format_slider_value(spec, value),
+            cx,
+        ))
         .child(Slider::new(state))
 }
 
-pub fn render_int_slider_row<T: 'static>(
+pub fn render_int_slider_row(
     spec: &SliderSpec<i64>,
     state: &Entity<SliderState>,
     value: f32,
-    cx: &mut Context<T>,
+    cx: &App,
 ) -> impl IntoElement {
     v_flex()
         .gap(CONTROL_GAP)
@@ -108,7 +110,7 @@ pub fn render_radio(
 
 #[cfg(test)]
 mod tests {
-    use gpui_kit::{gpui, AppContext, TestAppContext};
+    use gpui_kit::{AppContext, TestAppContext, gpui};
 
     use super::*;
 

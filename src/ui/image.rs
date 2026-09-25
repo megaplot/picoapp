@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui_kit::{img, px, AnyElement, ImageSource, IntoElement, RenderImage, Styled, Window};
+use gpui_kit::{AnyElement, ImageSource, IntoElement, RenderImage, Styled, Window, img, px};
 use image::Frame;
 use smallvec::smallvec;
 
@@ -10,8 +10,11 @@ use crate::outputs::Image as ImageData;
 /// it, so the caller can later `window.drop_image` it once the outputs
 /// that reference it are replaced.
 pub fn build_render_image(data: &ImageData) -> Arc<RenderImage> {
+    // `parse_output` (`outputs.rs`) already rejects a width/height that
+    // doesn't match the data length as an `Error`, so this never runs on a
+    // mismatched `ImageData` — nothing here re-validates on the UI thread.
     let frame = image::RgbaImage::from_raw(data.width, data.height, data.data.clone())
-        .expect("Image width/height must match data length");
+        .expect("Image width/height must match data length (should be caught by parse_output)");
     Arc::new(RenderImage::new(smallvec![Frame::new(frame)]))
 }
 

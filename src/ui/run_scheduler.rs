@@ -18,10 +18,6 @@ impl RunScheduler {
         }
     }
 
-    pub fn current_values(&self) -> &[InputValue] {
-        &self.values
-    }
-
     /// Marks the level's very first job (auto-triggered on construction,
     /// not from a UI change) as in flight, and returns the values to run it
     /// with. Without this, a change arriving while that first job is still

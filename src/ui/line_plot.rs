@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use gpui_kit::component::plot::{
+    AxisLabelSide, Grid, IntoPlot, Plot, PlotAxis, StrokeStyle,
     scale::{Scale, ScaleLinear},
     shape::Line,
-    AxisLabelSide, AxisText, Grid, IntoPlot, Plot, PlotAxis, StrokeStyle,
 };
-use gpui_kit::{px, App, Bounds, ContentMask, ElementId, Pixels, TextAlign, Window};
+use gpui_kit::{App, Bounds, ContentMask, ElementId, Pixels, TextAlign, Window, px};
 
 use crate::outputs::Plot as PlotData;
-use crate::ui::plot_common::{format_tick, paint_panel};
+use crate::ui::plot_common::{axis_label, paint_panel};
 use crate::ui::style::plot_colors;
 use crate::ui::ticks::nice_ticks;
 
@@ -67,15 +67,21 @@ pub fn decimate_min_max(xs: &[f64], ys: &[f64], buckets: usize) -> Vec<usize> {
 impl Plot for LinePlot {
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let colors = plot_colors();
-        let area = paint_panel(bounds, window, cx);
+        let area = paint_panel(bounds, window);
         let width = area.size.width.as_f32();
         let height = area.size.height.as_f32();
         if width <= 0.0 || height <= 0.0 {
             return;
         }
 
-        let (x0, x1) = (self.data.x_limits.start as f64, self.data.x_limits.end as f64);
-        let (y0, y1) = (self.data.y_limits.start as f64, self.data.y_limits.end as f64);
+        let (x0, x1) = (
+            self.data.x_limits.start as f64,
+            self.data.x_limits.end as f64,
+        );
+        let (y0, y1) = (
+            self.data.y_limits.start as f64,
+            self.data.y_limits.end as f64,
+        );
         let x_scale = ScaleLinear::new(vec![x0, x1], vec![0.0, width]);
         // Pixel y grows downward; plot y grows upward.
         let y_scale = ScaleLinear::new(vec![y0, y1], vec![height, 0.0]);
@@ -84,8 +90,16 @@ impl Plot for LinePlot {
         let y_ticks = nice_ticks(y0, y1, 8);
 
         Grid::new()
-            .x(x_ticks.iter().filter_map(|t| x_scale.tick(t)).map(px).collect::<Vec<_>>())
-            .y(y_ticks.iter().filter_map(|t| y_scale.tick(t)).map(px).collect::<Vec<_>>())
+            .x(x_ticks
+                .iter()
+                .filter_map(|t| x_scale.tick(t))
+                .map(px)
+                .collect::<Vec<_>>())
+            .y(y_ticks
+                .iter()
+                .filter_map(|t| y_scale.tick(t))
+                .map(px)
+                .collect::<Vec<_>>())
             .stroke(colors.grid)
             .paint(&area, window);
 
@@ -95,30 +109,24 @@ impl Plot for LinePlot {
             .y(px(0.))
             .y_label_side(AxisLabelSide::Start)
             .x_label(x_ticks.iter().filter_map(|t| {
-                x_scale.tick(t).map(|tick| {
-                    AxisText::new(format_tick(*t), px(tick), colors.text)
-                        .font_size(px(11.))
-                        .align(TextAlign::Center)
-                })
+                x_scale
+                    .tick(t)
+                    .map(|tick| axis_label(*t, tick, colors.text, TextAlign::Center))
             }))
             .y_label(y_ticks.iter().filter_map(|t| {
-                y_scale.tick(t).map(|tick| {
-                    AxisText::new(format_tick(*t), px(tick), colors.text)
-                        .font_size(px(11.))
-                        .align(TextAlign::Right)
-                })
+                y_scale
+                    .tick(t)
+                    .map(|tick| axis_label(*t, tick, colors.text, TextAlign::Right))
             }))
             .paint(&area, window, cx);
 
-        let data = self.data.clone();
-        let indices = decimate_min_max(&data.xs, &data.ys, width.ceil() as usize);
+        let indices = decimate_min_max(&self.data.xs, &self.data.ys, width.ceil() as usize);
+        let data_for_x = self.data.clone();
+        let data_for_y = self.data.clone();
         let line = Line::new()
             .data(indices)
-            .x(move |&i| x_scale.tick(&data.xs[i]))
-            .y({
-                let data = self.data.clone();
-                move |&i| y_scale.tick(&data.ys[i])
-            })
+            .x(move |&i| x_scale.tick(&data_for_x.xs[i]))
+            .y(move |&i| y_scale.tick(&data_for_y.ys[i]))
             .stroke(colors.line)
             .stroke_style(StrokeStyle::Linear)
             .stroke_width(px(1.5));

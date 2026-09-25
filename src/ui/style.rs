@@ -19,7 +19,7 @@
 use std::rc::Rc;
 
 use gpui_kit::component::{ActiveTheme, Theme, ThemeMode};
-use gpui_kit::{div, hsla, px, App, Div, Hsla, ParentElement, Pixels, Rgba, Styled};
+use gpui_kit::{App, Div, Hsla, ParentElement, Pixels, Rgba, Styled, div, hsla, px};
 
 // ---- palette --------------------------------------------------------------
 
@@ -82,9 +82,7 @@ pub fn card(cx: &App) -> Div {
 
 /// A card-shaped error message.
 pub fn error_card(message: String, cx: &App) -> Div {
-    div()
-        .p(CARD_PADDING)
-        .rounded(CARD_RADIUS)
+    card(cx)
         .bg(cx.theme().danger.opacity(0.15))
         .text_color(cx.theme().danger)
         .child(message)
