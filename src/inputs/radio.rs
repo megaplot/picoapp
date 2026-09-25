@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PySequence;
 
+/// Wrapper newtype for the underlying PyObject instance.
 #[derive(Debug)]
 pub struct PyRadio(PyObject);
 
@@ -15,6 +16,7 @@ impl PyRadio {
     }
 }
 
+/// Pure-Rust half of a `Radio`, sent to the UI thread; see `into_parts`.
 #[derive(Debug, Clone)]
 pub struct RadioSpec {
     pub name: String,
@@ -23,39 +25,58 @@ pub struct RadioSpec {
 }
 
 #[derive(Debug)]
-pub struct RadioBinding {
-    py_radio: PyRadio,
+pub struct Radio {
+    pub name: String,
+    // Note that a radio is not concerned with the underlying user (Python)
+    // type, it only cares about the string representations of the values
+    // and internally operates on indices.
+    pub init_index: usize,
+    pub value_names: Vec<String>,
+    pub py_radio: PyRadio,
 }
 
-impl RadioBinding {
-    pub fn set_to_index(&self, py: Python<'_>, index: usize) -> PyResult<()> {
-        self.py_radio.set_to_index(py, index)
-    }
-}
-
-pub fn parse_radio(obj: &Bound<'_, PyAny>) -> PyResult<(RadioSpec, RadioBinding)> {
-    let name: String = obj.getattr("_name")?.extract()?;
-    let init_index: usize = obj.getattr("_init_index")?.extract()?;
-
-    let mut value_names = Vec::<String>::new();
-    let raw_values = obj.getattr("_values")?;
-    let raw_values = raw_values.downcast::<PySequence>()?;
-    for raw_value in raw_values.iter()? {
-        let raw_value = raw_value?;
-        let value_name: String = raw_value.call_method("__str__", (), None)?.extract()?;
-        value_names.push(value_name);
-    }
-
-    Ok((
-        RadioSpec {
+impl Radio {
+    /// Splits into the plain-data half sent to the UI and the `PyObject`
+    /// handle that stays on the worker thread.
+    pub fn into_parts(self) -> (RadioSpec, PyRadio) {
+        let Radio {
             name,
             init_index,
             value_names,
-        },
-        RadioBinding {
-            py_radio: PyRadio::new(obj.clone().unbind()),
-        },
-    ))
+            py_radio,
+        } = self;
+        (
+            RadioSpec {
+                name,
+                init_index,
+                value_names,
+            },
+            py_radio,
+        )
+    }
 }
 
-pub type Radio = RadioSpec;
+impl<'py> FromPyObject<'py> for Radio {
+    fn extract_bound(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let name: String = obj.getattr("_name")?.extract()?;
+        let init_index: usize = obj.getattr("_init_index")?.extract()?;
+
+        // Note that a radio supports arbitrary underlying types, and we are using `__str__` calls to
+        // infer the label strings.
+        let mut value_names = Vec::<String>::new();
+        let raw_values = obj.getattr("_values")?;
+        let raw_values = raw_values.downcast::<PySequence>()?;
+        for raw_value in raw_values.iter()? {
+            let raw_value = raw_value?;
+            let value_name: String = raw_value.call_method("__str__", (), None)?.extract()?;
+            value_names.push(value_name);
+        }
+
+        Ok(Radio {
+            name,
+            init_index,
+            value_names,
+            py_radio: PyRadio::new(obj.clone().unbind()),
+        })
+    }
+}

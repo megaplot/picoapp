@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 
+/// Wrapper newtype for the underlying PyObject instance.
 #[derive(Debug)]
 pub struct PyCheckbox(PyObject);
 
@@ -12,6 +13,7 @@ impl PyCheckbox {
     }
 }
 
+/// Pure-Rust half of a `Checkbox`, sent to the UI thread; see `into_parts`.
 #[derive(Debug, Clone)]
 pub struct CheckboxSpec {
     pub name: String,
@@ -19,27 +21,34 @@ pub struct CheckboxSpec {
 }
 
 #[derive(Debug)]
-pub struct CheckboxBinding {
-    py_checkbox: PyCheckbox,
+pub struct Checkbox {
+    pub name: String,
+    pub init: bool,
+    pub py_checkbox: PyCheckbox,
 }
 
-impl CheckboxBinding {
-    pub fn set_value(&self, py: Python<'_>, value: bool) -> PyResult<()> {
-        self.py_checkbox.set_value(py, value)
+impl Checkbox {
+    /// Splits into the plain-data half sent to the UI and the `PyObject`
+    /// handle that stays on the worker thread.
+    pub fn into_parts(self) -> (CheckboxSpec, PyCheckbox) {
+        let Checkbox {
+            name,
+            init,
+            py_checkbox,
+        } = self;
+        (CheckboxSpec { name, init }, py_checkbox)
     }
 }
 
-pub fn parse_checkbox(obj: &Bound<'_, PyAny>) -> PyResult<(CheckboxSpec, CheckboxBinding)> {
-    let name: String = obj.getattr("_name")?.extract()?;
-    let init: bool = obj.getattr("_init")?.extract()?;
-    Ok((
-        CheckboxSpec { name, init },
-        CheckboxBinding {
-            py_checkbox: PyCheckbox::new(obj.clone().unbind()),
-        },
-    ))
-}
+impl<'py> FromPyObject<'py> for Checkbox {
+    fn extract_bound(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let name: String = obj.getattr("_name")?.extract()?;
+        let init: bool = obj.getattr("_init")?.extract()?;
 
-/// Kept for compatibility with the old name used by the Input enum's
-/// `Debug`; not otherwise used.
-pub type Checkbox = CheckboxSpec;
+        Ok(Checkbox {
+            name,
+            init,
+            py_checkbox: PyCheckbox::new(obj.clone().unbind()),
+        })
+    }
+}

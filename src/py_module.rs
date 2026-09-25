@@ -1,20 +1,26 @@
+// pyo3 0.22's `#[pyfunction]`/`#[pymodule]` macros expand argument
+// extraction into calls to an unsafe function without wrapping them in an
+// `unsafe` block, relying on the pre-2024 rule that an unsafe fn body is
+// itself an unsafe context. Edition 2024 tightens that (`unsafe_op_in_unsafe_fn`
+// is now warn-by-default), so every macro-generated function in this file
+// warns until pyo3 catches up. Fix upstream, not ours to silence per call site.
+#![allow(unsafe_op_in_unsafe_fn)]
+
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PySequence;
 
-use crate::inputs::Input;
+use crate::inputs::{Input, InputValue, Inputs, split_inputs};
 use crate::ui::run_ui;
 use crate::utils::Callback;
-use crate::worker::Registry;
+use crate::worker::{Registry, UiLevelResult};
 
 #[pyfunction]
 fn run(inputs: &Bound<'_, PySequence>, callback: &Bound<'_, PyAny>) -> PyResult<()> {
     let py = inputs.py();
-    let mut objs = Vec::new();
-    for item in inputs.iter()? {
-        objs.push(item?);
-    }
+    let inputs: Inputs = inputs.extract()?;
     let callback: Callback = callback.extract()?;
-    run_ui(py, &objs, callback)?;
+    run_ui(py, inputs, callback)?;
     Ok(())
 }
 
@@ -44,42 +50,39 @@ fn run_worker_job(
 ) -> PyResult<String> {
     let py = inputs.py();
 
-    let mut objs = Vec::new();
-    for item in inputs.iter()? {
-        objs.push(item?);
+    let inputs: Inputs = inputs.extract()?;
+    let (_, bindings) = split_inputs(inputs);
+    let callback: Callback = callback.extract()?;
+
+    if values.len()? != bindings.len() {
+        return Err(PyValueError::new_err(format!(
+            "values has {} entries, but there are {} inputs",
+            values.len()?,
+            bindings.len()
+        )));
     }
-    let (_, bindings) = crate::inputs::parse_inputs(&objs)?;
-    let callback: crate::utils::Callback = callback.extract()?;
 
     let mut input_values = Vec::new();
     for (binding, raw_value) in bindings.iter().zip(values.iter()?) {
         let raw_value = raw_value?;
         let value = match binding {
-            crate::inputs::InputBinding::Slider(_) => {
-                crate::inputs::InputValue::F64(raw_value.extract()?)
-            }
-            crate::inputs::InputBinding::IntSlider(_) => {
-                crate::inputs::InputValue::I64(raw_value.extract()?)
-            }
-            crate::inputs::InputBinding::Checkbox(_) => {
-                crate::inputs::InputValue::Bool(raw_value.extract()?)
-            }
-            crate::inputs::InputBinding::Radio(_) => {
-                crate::inputs::InputValue::Index(raw_value.extract()?)
-            }
+            crate::inputs::InputBinding::Slider(_) => InputValue::F64(raw_value.extract()?),
+            crate::inputs::InputBinding::IntSlider(_) => InputValue::I64(raw_value.extract()?),
+            crate::inputs::InputBinding::Checkbox(_) => InputValue::Bool(raw_value.extract()?),
+            crate::inputs::InputBinding::Radio(_) => InputValue::Index(raw_value.extract()?),
         };
         input_values.push(value);
     }
 
     let mut registry = Registry::new();
     let level = registry.register(bindings, callback);
-    let result = registry.run_job_for_ui(py, level, &input_values);
+    let result = registry.run_job(py, level, &input_values);
 
     Ok(match result {
-        crate::worker::UiLevelResult::Outputs(outputs) => format!("Outputs({})", outputs.len()),
-        crate::worker::UiLevelResult::Nested { specs, .. } => format!("Nested({})", specs.len()),
-        crate::worker::UiLevelResult::Error(msg) => format!("Error({msg})"),
-        crate::worker::UiLevelResult::Discarded => "Discarded".to_string(),
+        UiLevelResult::Outputs(outputs) => format!("Outputs({})", outputs.len()),
+        UiLevelResult::Nested { specs, .. } => format!("Nested({})", specs.len()),
+        UiLevelResult::Error(msg) => format!("Error({msg})"),
+        UiLevelResult::Discarded => "Discarded".to_string(),
     })
 }
 

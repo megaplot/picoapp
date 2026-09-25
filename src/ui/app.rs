@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui_kit::component::{v_flex, ActiveTheme, Root};
+use gpui_kit::component::{ActiveTheme, Root, v_flex};
 use gpui_kit::{
     App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Point, Render, Styled,
     TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
@@ -8,7 +8,7 @@ use gpui_kit::{
 use log::info;
 use pyo3::prelude::*;
 
-use crate::inputs::parse_inputs;
+use crate::inputs::{Inputs, split_inputs};
 use crate::logging_setup::setup_logging;
 use crate::ui::header_bar::HeaderBar;
 use crate::ui::reactive_view::ReactiveView;
@@ -17,12 +17,12 @@ use crate::utils::Callback;
 use crate::worker::spawn;
 
 /// gpui-kit 0.6.6 (the version pinned by this crate) does not yet publish
-/// the `gpui_kit::open_window` convenience wrapper that a newer,
-/// unreleased gpui-kit does (see ledger ruling for Task 1). This
-/// reimplements it: open a plain gpui window via `App::open_window` and
-/// wrap the built view in `gpui_kit::component::Root`, which is what the
-/// newer wrapper does internally — same behavior (dialogs/sheets/
-/// notifications/menus work), just not hidden behind a helper function.
+/// the `gpui_kit::open_window` convenience wrapper that a newer, unreleased
+/// gpui-kit does. This reimplements it: open a plain gpui window via
+/// `App::open_window` and wrap the built view in `gpui_kit::component::Root`,
+/// which is what the newer wrapper does internally — same behavior
+/// (dialogs/sheets/notifications/menus work), just not hidden behind a
+/// helper function.
 fn open_window<V: 'static + Render>(
     options: WindowOptions,
     cx: &mut App,
@@ -84,10 +84,10 @@ impl Render for AppShell {
     }
 }
 
-pub fn run_ui(py: Python<'_>, input_objs: &[Bound<'_, PyAny>], callback: Callback) -> PyResult<()> {
+pub fn run_ui(py: Python<'_>, inputs: Inputs, callback: Callback) -> PyResult<()> {
     setup_logging();
 
-    let (specs, bindings) = parse_inputs(input_objs)?;
+    let (specs, bindings) = split_inputs(inputs);
     let (worker, root_level) = spawn(bindings, callback);
     info!("Worker spawned, opening window (root's first job dispatches asynchronously)");
 
@@ -97,18 +97,18 @@ pub fn run_ui(py: Python<'_>, input_objs: &[Bound<'_, PyAny>], callback: Callbac
             // Icons (checkmarks, window controls) are embedded SVG assets.
             .with_assets(gpui_kit::assets::Assets)
             .run(move |cx: &mut App| {
-            gpui_kit::init(cx);
-            // picoapp is deliberately dark: it suits its use case (studying
-            // algorithms on plots) and matches the cushy version's look.
-            crate::ui::style::apply_dark_palette(cx);
-            open_window(window_options(), cx, move |window, cx| {
-                window.set_window_title(APP_TITLE);
-                let content =
-                    cx.new(|cx| ReactiveView::new(root_level, specs, worker, window, cx));
-                cx.new(|_| AppShell { content })
-            })
-            .expect("failed to open window");
-        });
+                gpui_kit::init(cx);
+                // picoapp is deliberately dark: it suits its use case (studying
+                // algorithms on plots) and matches the cushy version's look.
+                crate::ui::style::apply_dark_palette(cx);
+                open_window(window_options(), cx, move |window, cx| {
+                    window.set_window_title(APP_TITLE);
+                    let content =
+                        cx.new(|cx| ReactiveView::new(root_level, specs, worker, window, cx));
+                    cx.new(|_| AppShell { content })
+                })
+                .expect("failed to open window");
+            });
     });
 
     Ok(())

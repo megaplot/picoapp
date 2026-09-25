@@ -4,8 +4,8 @@ use std::thread::JoinHandle;
 
 use pyo3::prelude::*;
 
-use crate::inputs::{InputBinding, InputSpec, InputValue};
-use crate::outputs::{parse_level_result, LevelResult};
+use crate::inputs::{InputBinding, InputSpec, InputValue, split_inputs};
+use crate::outputs::{CallbackReturn, format_traceback, parse_callback_return};
 use crate::utils::Callback;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -21,6 +21,17 @@ impl LevelId {
 struct Level {
     bindings: Vec<InputBinding>,
     callback: Callback,
+}
+
+/// What crosses from the worker to the UI: never carries a `Py` value.
+pub enum UiLevelResult {
+    Outputs(Vec<crate::outputs::Output>),
+    Nested {
+        level: LevelId,
+        specs: Vec<InputSpec>,
+    },
+    Error(String),
+    Discarded,
 }
 
 /// Owns every Python handle. Lives entirely on the worker thread.
@@ -49,61 +60,38 @@ impl Registry {
     }
 
     /// Writes `values` into `level`'s bindings, calls its callback, and
-    /// parses the result. Returns `LevelResult::Discarded` if `level` isn't
-    /// registered (already dropped). On `Nested`, allocates and registers
-    /// the new level's bindings before returning, so the caller only ever
-    /// receives specs for it (see `run_job`'s caller in `spawn_worker`,
-    /// which turns `Nested { specs, bindings, callback }` into a freshly
-    /// registered `LevelId` before forwarding a UI-safe result).
-    pub fn run_job(&mut self, py: Python<'_>, level: LevelId, values: &[InputValue]) -> LevelResult {
-        let Some(entry) = self.levels.get(&level) else {
-            return LevelResult::Discarded;
-        };
-
-        for (binding, value) in entry.bindings.iter().zip(values) {
-            if let Err(err) = binding.set_value(py, value) {
-                return LevelResult::Error(crate::outputs::format_traceback(py, &err));
-            }
-        }
-
-        let cb_return = entry.callback.call(py);
-        parse_level_result(py, cb_return)
-    }
-}
-
-/// What crosses from the worker to the UI: never carries a `Py` value.
-pub enum UiLevelResult {
-    Outputs(Vec<crate::outputs::Output>),
-    Nested { level: LevelId, specs: Vec<InputSpec> },
-    Error(String),
-    Discarded,
-}
-
-impl Registry {
-    /// Like `run_job`, but resolves a `Nested` result into a freshly
-    /// registered `LevelId`, so nothing but `InputSpec`s and plain data
-    /// escape to the UI.
-    pub fn run_job_for_ui(
+    /// parses the result. Returns `UiLevelResult::Discarded` if `level` isn't
+    /// registered (already dropped). On a nested `ReactiveBase` return,
+    /// registers the new level's bindings before returning, so the caller
+    /// only ever receives specs for it.
+    pub fn run_job(
         &mut self,
         py: Python<'_>,
         level: LevelId,
         values: &[InputValue],
     ) -> UiLevelResult {
-        match self.run_job(py, level, values) {
-            LevelResult::Outputs(outputs) => UiLevelResult::Outputs(outputs),
-            LevelResult::Nested {
-                specs,
-                bindings,
-                callback,
-            } => {
-                let new_level = self.register(bindings, callback);
-                UiLevelResult::Nested {
-                    level: new_level,
-                    specs,
-                }
+        let Some(entry) = self.levels.get(&level) else {
+            return UiLevelResult::Discarded;
+        };
+
+        for (binding, value) in entry.bindings.iter().zip(values) {
+            if let Err(err) = binding.set_value(py, value) {
+                return UiLevelResult::Error(format_traceback(py, &err));
             }
-            LevelResult::Error(msg) => UiLevelResult::Error(msg),
-            LevelResult::Discarded => UiLevelResult::Discarded,
+        }
+
+        let result = entry
+            .callback
+            .call(py)
+            .and_then(|cb_return| parse_callback_return(py, cb_return));
+        match result {
+            Ok(CallbackReturn::Outputs(outputs)) => UiLevelResult::Outputs(outputs),
+            Ok(CallbackReturn::Inputs(inputs, callback)) => {
+                let (specs, bindings) = split_inputs(inputs);
+                let level = self.register(bindings, callback);
+                UiLevelResult::Nested { level, specs }
+            }
+            Err(err) => UiLevelResult::Error(format_traceback(py, &err)),
         }
     }
 }
@@ -176,24 +164,46 @@ pub fn spawn(bindings: Vec<InputBinding>, callback: Callback) -> (WorkerHandle, 
     )
 }
 
+fn worker_loop(mut registry: Registry, receiver: mpsc::Receiver<Job>) {
+    while let Ok(job) = receiver.recv() {
+        match job {
+            Job::Run {
+                level,
+                values,
+                reply,
+            } => {
+                let result = Python::with_gil(|py| registry.run_job(py, level, &values));
+                // Ignore a failed send: it only means the UI dropped the
+                // receiver (view released while its job was in flight).
+                let _ = reply.send(result);
+            }
+            Job::Drop { level } => {
+                Python::with_gil(|_py| registry.drop_level(level));
+            }
+        }
+    }
+    // Channel closed: drop the registry under the GIL so every Py handle
+    // is released correctly.
+    Python::with_gil(|_py| drop(registry));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn run_job_for_ui_returns_discarded_for_dropped_level() {
+    fn run_job_returns_discarded_for_dropped_level() {
         let mut registry = Registry::new();
         // No easy way to build a real Callback/InputBinding without a live
-        // Python interpreter; instead, exercise drop_level directly against a
-        // LevelId that was never registered, which is exactly the state a
-        // just-dropped level is in from run_job_for_ui's point of view.
+        // Python interpreter; instead, use a LevelId that was never
+        // registered, which is exactly the state a just-dropped level is in
+        // from run_job's point of view. `run_job`'s early-return branch
+        // doesn't touch Python at all when the level is absent, so this
+        // doesn't need a real callback either.
         let level = LevelId(0);
-        // No `Python::with_gil` available outside `pyo3::prepare_freethreaded_python()`
-        // in a plain `cargo test`; this test only needs `run_job`'s early-return
-        // branch, which doesn't touch Python at all when the level is absent.
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
-            let result = registry.run_job_for_ui(py, level, &[]);
+            let result = registry.run_job(py, level, &[]);
             assert!(matches!(result, UiLevelResult::Discarded));
         });
     }
@@ -212,7 +222,11 @@ mod tests {
         let done_writer = done.clone();
         std::thread::spawn(move || {
             let (worker, _root) = Python::with_gil(|py| {
-                let callback: Callback = py.eval_bound("lambda: None", None, None).unwrap().extract().unwrap();
+                let callback: Callback = py
+                    .eval_bound("lambda: None", None, None)
+                    .unwrap()
+                    .extract()
+                    .unwrap();
                 spawn(vec![], callback)
             });
             drop(worker);
@@ -228,27 +242,4 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
-}
-
-fn worker_loop(mut registry: Registry, receiver: mpsc::Receiver<Job>) {
-    while let Ok(job) = receiver.recv() {
-        match job {
-            Job::Run {
-                level,
-                values,
-                reply,
-            } => {
-                let result = Python::with_gil(|py| registry.run_job_for_ui(py, level, &values));
-                // Ignore a failed send: it only means the UI dropped the
-                // receiver (view released while its job was in flight).
-                let _ = reply.send(result);
-            }
-            Job::Drop { level } => {
-                Python::with_gil(|_py| registry.drop_level(level));
-            }
-        }
-    }
-    // Channel closed: drop the registry under the GIL so every Py handle
-    // is released correctly.
-    Python::with_gil(|_py| drop(registry));
 }

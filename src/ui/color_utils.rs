@@ -16,7 +16,7 @@ use gpui_kit::Rgba;
 /// print(colors)
 /// ```
 ///
-pub fn viridis(x: f64) -> Rgba {
+pub fn get_viridis_color(x: f64) -> Rgba {
     // List of Viridis colors (255 colors as hex strings)
     const VIRIDIS: [&str; 255] = [
         "#440154", "#440255", "#440357", "#450558", "#45065a", "#45085b", "#46095c", "#460b5e",
@@ -92,12 +92,12 @@ mod tests {
 
     #[test]
     fn endpoints_match_known_viridis_colors() {
-        let low = viridis(0.0);
+        let low = get_viridis_color(0.0);
         assert_eq!((low.r * 255.0).round() as u8, 0x44);
         assert_eq!((low.g * 255.0).round() as u8, 0x01);
         assert_eq!((low.b * 255.0).round() as u8, 0x54);
 
-        let high = viridis(1.0);
+        let high = get_viridis_color(1.0);
         assert_eq!((high.r * 255.0).round() as u8, 0xfd);
         assert_eq!((high.g * 255.0).round() as u8, 0xe7);
         assert_eq!((high.b * 255.0).round() as u8, 0x24);
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn clamps_out_of_range_input() {
-        assert_eq!(viridis(-1.0), viridis(0.0));
-        assert_eq!(viridis(2.0), viridis(1.0));
+        assert_eq!(get_viridis_color(-1.0), get_viridis_color(0.0));
+        assert_eq!(get_viridis_color(2.0), get_viridis_color(1.0));
     }
 }
