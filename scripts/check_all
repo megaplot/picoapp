@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Runs every check CI runs, in the same order, delegating to the same
+# scripts checks.yaml does — a green run here means CI is green too.
+#
+# Assumes env.sh has been sourced and the venv is installed
+# (./scripts/venv_create && ./scripts/venv_install). Rebuilds the native
+# extension itself before the Python checks, since they need the current
+# Rust code, not whatever `maturin develop` last produced.
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+if [[ -z "$VENV_DIR" ]]; then
+    echo "\$VENV_DIR must be set (source env.sh first)" 1>&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+echo -e "\n*** Rust: check format"
+./scripts/check_rust_format
+
+echo -e "\n*** Rust: check lint"
+./scripts/check_rust_lint
+
+echo -e "\n*** Rust: tests"
+./scripts/check_rust_test
+
+echo -e "\n*** Rebuilding native extension"
+maturin develop --uv
+
+echo -e "\n*** Python: check types"
+./scripts/check_python_types
+
+echo -e "\n*** Python: check lint"
+./scripts/check_python_lint
+
+echo -e "\n*** Python: check format"
+./scripts/check_python_format
+
+echo -e "\n*** Python: tests"
+./scripts/check_python_test
+
+echo -e "\n*** Integration test (minimal dependencies)"
+./scripts/check_integration_minimal_install
+
+echo -e "\n*** All checks passed"

@@ -15,12 +15,22 @@ where
     pub fn new(obj: PyObject) -> Self {
         PySlider(obj, PhantomData)
     }
-    pub fn clone_ref(&self, py: Python<'_>) -> PySlider<T> {
-        PySlider::new(self.0.clone_ref(py))
-    }
     pub fn set_value(&self, py: Python<'_>, value: T) -> PyResult<()> {
         self.0.setattr(py, "_value", value)
     }
+}
+
+/// Pure-Rust half of a `Slider<T>`, sent to the UI thread; see `into_parts`.
+#[derive(Debug, Clone)]
+pub struct SliderSpec<T> {
+    pub name: String,
+    pub min: T,
+    pub init: T,
+    pub max: T,
+    // Leaky abstraction: So far the following is only supported (or makes only sense)
+    // for float sliders.
+    pub log: bool,
+    pub decimal_places: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -37,6 +47,36 @@ where
     pub log: bool,
     pub decimal_places: Option<usize>,
     pub py_slider: PySlider<T>,
+}
+
+impl<T> Slider<T>
+where
+    T: IntoPy<Py<PyAny>>,
+{
+    /// Splits into the plain-data half sent to the UI and the `PyObject`
+    /// handle that stays on the worker thread.
+    pub fn into_parts(self) -> (SliderSpec<T>, PySlider<T>) {
+        let Slider {
+            name,
+            min,
+            init,
+            max,
+            log,
+            decimal_places,
+            py_slider,
+        } = self;
+        (
+            SliderSpec {
+                name,
+                min,
+                init,
+                max,
+                log,
+                decimal_places,
+            },
+            py_slider,
+        )
+    }
 }
 
 // https://github.com/PyO3/pyo3/discussions/3058

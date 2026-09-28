@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Runs the Rust test suite. Mirrors the "Rust: Tests" CI step.
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+cargo test

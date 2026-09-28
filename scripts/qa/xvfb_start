@@ -1,0 +1,6 @@
+#!/bin/bash
+# Starts a headless X server on :99 (needs Xvfb; on Ubuntu without root:
+#   apt-get download xvfb && dpkg -x xvfb_*.deb ~/.local/xvfb ).
+XVFB=${XVFB:-$(command -v Xvfb || echo ~/.local/xvfb/usr/bin/Xvfb)}
+pgrep -f "Xvfb :99" >/dev/null || (nohup "$XVFB" :99 -screen 0 1700x1100x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &)
+sleep 1

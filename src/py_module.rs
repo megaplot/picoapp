@@ -1,16 +1,26 @@
+// pyo3 0.22's `#[pyfunction]`/`#[pymodule]` macros expand argument
+// extraction into calls to an unsafe function without wrapping them in an
+// `unsafe` block, relying on the pre-2024 rule that an unsafe fn body is
+// itself an unsafe context. Edition 2024 tightens that (`unsafe_op_in_unsafe_fn`
+// is now warn-by-default), so every macro-generated function in this file
+// warns until pyo3 catches up. Fix upstream, not ours to silence per call site.
+#![allow(unsafe_op_in_unsafe_fn)]
+
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PySequence;
 
-use crate::inputs::{Input, Inputs};
-use crate::main_run_ui::run_ui;
+use crate::inputs::{Input, InputValue, Inputs, split_inputs};
+use crate::ui::run_ui;
 use crate::utils::Callback;
+use crate::worker::{Registry, UiLevelResult};
 
 #[pyfunction]
 fn run(inputs: &Bound<'_, PySequence>, callback: &Bound<'_, PyAny>) -> PyResult<()> {
     let py = inputs.py();
     let inputs: Inputs = inputs.extract()?;
     let callback: Callback = callback.extract()?;
-    run_ui(py, &inputs, callback)?;
+    run_ui(py, inputs, callback)?;
     Ok(())
 }
 
@@ -23,9 +33,63 @@ fn parse_input(_input: &Bound<'_, PyAny>) -> PyResult<()> {
     Ok(())
 }
 
+/// Test-only hook: runs exactly one job through the real worker logic
+/// (value writes, callback call, output parsing) without any gpui or
+/// threading involved. Returns a short human-readable summary so pytest
+/// can assert on outcomes without needing bindings for every Rust type.
+///
+/// Exposed for the same reason as `_parse_input`: it's otherwise very
+/// hard to unit test the "value setting + callback + parse" path from
+/// Python.
+#[pyfunction]
+#[pyo3(name = "_run_worker_job")]
+fn run_worker_job(
+    inputs: &Bound<'_, PySequence>,
+    callback: &Bound<'_, PyAny>,
+    values: &Bound<'_, PySequence>,
+) -> PyResult<String> {
+    let py = inputs.py();
+
+    let inputs: Inputs = inputs.extract()?;
+    let (_, bindings) = split_inputs(inputs);
+    let callback: Callback = callback.extract()?;
+
+    if values.len()? != bindings.len() {
+        return Err(PyValueError::new_err(format!(
+            "values has {} entries, but there are {} inputs",
+            values.len()?,
+            bindings.len()
+        )));
+    }
+
+    let mut input_values = Vec::new();
+    for (binding, raw_value) in bindings.iter().zip(values.iter()?) {
+        let raw_value = raw_value?;
+        let value = match binding {
+            crate::inputs::InputBinding::Slider(_) => InputValue::F64(raw_value.extract()?),
+            crate::inputs::InputBinding::IntSlider(_) => InputValue::I64(raw_value.extract()?),
+            crate::inputs::InputBinding::Checkbox(_) => InputValue::Bool(raw_value.extract()?),
+            crate::inputs::InputBinding::Radio(_) => InputValue::Index(raw_value.extract()?),
+        };
+        input_values.push(value);
+    }
+
+    let mut registry = Registry::new();
+    let level = registry.register(bindings, callback);
+    let result = registry.run_job(py, level, &input_values);
+
+    Ok(match result {
+        UiLevelResult::Outputs(outputs) => format!("Outputs({})", outputs.len()),
+        UiLevelResult::Nested { specs, .. } => format!("Nested({})", specs.len()),
+        UiLevelResult::Error(msg) => format!("Error({msg})"),
+        UiLevelResult::Discarded => "Discarded".to_string(),
+    })
+}
+
 #[pymodule]
 fn _picoapp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)?;
     m.add_function(wrap_pyfunction!(parse_input, m)?)?;
+    m.add_function(wrap_pyfunction!(run_worker_job, m)?)?;
     Ok(())
 }

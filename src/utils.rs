@@ -13,9 +13,6 @@ use pyo3::prelude::*;
 pub struct Callback(Py<PyAny>);
 
 impl Callback {
-    pub fn clone_ref(&self, py: Python<'_>) -> Callback {
-        Callback(self.0.clone_ref(py))
-    }
     /// Abstraction for our "unary" call of the callback.
     pub fn call(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         self.0.call_bound(py, (), None)

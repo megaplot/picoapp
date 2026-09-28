@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Checks Rust for compiler warnings, denying them so a warning fails the
+# build instead of silently accumulating. Mirrors the "Rust: Check lint" CI
+# step.
+#
+# RUSTFLAGS rather than a crate-level `#![deny(warnings)]`: it only affects
+# this invocation (plain `cargo build`/`cargo test` runs stay warning-
+# tolerant while iterating), at the cost of a separate compilation cache
+# entry from those commands.
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+RUSTFLAGS="-D warnings" cargo check --all-targets --all-features

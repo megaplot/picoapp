@@ -15,7 +15,7 @@ jobs:
 
   checks:
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -23,10 +23,10 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -37,16 +37,28 @@ jobs:
 
       - name: "Install prerequisites"
         run: |
-          dpkq-query -l libasound2-dev || true
-          dpkq-query -l libdbus-1-dev || true
+          dpkg-query -l libasound2-dev || true
+          dpkg-query -l libdbus-1-dev || true
           sudo apt-get update
-          sudo apt install libasound2-dev libdbus-1-dev
-          dpkq-query -l libasound2-dev || true
-          dpkq-query -l libdbus-1-dev || true
+          sudo apt install libasound2-dev libdbus-1-dev libxkbcommon-x11-dev \
+            libwayland-dev libx11-xcb-dev libfontconfig-dev clang
+          dpkg-query -l libasound2-dev || true
+          dpkg-query -l libdbus-1-dev || true
+
+      - name: "Rust: Check format"
+        run: |
+          . env.sh
+          ./scripts/check_rust_format
+
+      - name: "Rust: Check lint"
+        run: |
+          . env.sh
+          ./scripts/check_rust_lint
 
       - name: "Rust: Tests"
         run: |
-          cargo test
+          . env.sh
+          ./scripts/check_rust_test
 
       - name: "Install uv"
         run: |
@@ -68,30 +80,25 @@ jobs:
       - name: "Python: Check types"
         run: |
           . env.sh
-          mypy .
+          ./scripts/check_python_types
 
       - name: "Python: Check linter"
         run: |
           . env.sh
-          flake8
+          ./scripts/check_python_lint
 
       - name: "Python: Check format"
         run: |
           . env.sh
-          black --check .
-          isort --check .
+          ./scripts/check_python_format
 
       - name: "Python: Tests"
         run: |
           . env.sh
-          pytest
+          ./scripts/check_python_test
 
       - name: "Integration test (minimal dependencies)"
         run: |
-          uv venv ./tmp_venv
-          . ./tmp_venv/bin/activate
-          uv pip install .
-          uv pip freeze
-
-          python -c "import picoapp"
+          . env.sh
+          ./scripts/check_integration_minimal_install
 

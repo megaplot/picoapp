@@ -37,6 +37,8 @@ impl Audio {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Image {
+    /// Pixel data in **BGRA** order (swizzled from the RGBA the Python side
+    /// produces), ready for `gpui`'s `RenderImage`.
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
@@ -54,14 +56,21 @@ pub enum CallbackReturn {
     Inputs(Inputs, Callback),
 }
 
-impl PartialEq for CallbackReturn {
-    fn eq(&self, _other: &Self) -> bool {
-        // PartialEq is need for setting a `Dynamic`. In this use case, we probably want
-        // to assume that each invocation of the callback returns a different result (which
-        // is probably true any if an `PyFunction` is involved). Even if the returned value
-        // would be the same, there is no real harm in re-updating the UI. In terms of performance
-        // the evaluation of the callback itself probably outweighs the UI update anyway.
-        false
+/// Formats a `PyErr`'s message and traceback for display in the UI.
+///
+/// Deliberately does not print anything: the UI shows the error, and
+/// picoapp's stdout/stderr belong to the user's own callback (nothing by
+/// default).
+///
+/// `PyErr::display` (pyo3 0.22) only prints to stderr and returns `()`, and
+/// `PyErr`'s `Display` impl gives just "ExceptionType: message" with no
+/// traceback, so the traceback is formatted separately via
+/// `PyTraceback::format` and appended when present.
+pub fn format_traceback(py: Python<'_>, err: &PyErr) -> String {
+    let message = err.to_string();
+    match err.traceback_bound(py).and_then(|tb| tb.format().ok()) {
+        Some(frames) => format!("{message}\n\n{frames}"),
+        None => message,
     }
 }
 
@@ -102,6 +111,16 @@ pub fn parse_outputs(py: Python<'_>, outputs: PyObject) -> PyResult<Vec<Output>>
         results.push(output);
     }
     Ok(results)
+}
+
+/// Swizzles a flat RGBA byte buffer to BGRA, the pixel format gpui's
+/// `RenderImage` expects. Returns a new `Vec`.
+fn rgba_to_bgra(rgba: &[u8]) -> Vec<u8> {
+    let mut out = rgba.to_vec();
+    for px in out.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    out
 }
 
 fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
@@ -145,8 +164,18 @@ fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
         let data: Vec<u8> = object.getattr("data")?.extract()?;
         let width: u32 = object.getattr("width")?.extract()?;
         let height: u32 = object.getattr("height")?.extract()?;
+        // Validated here, on the worker, so a mismatched Image surfaces as
+        // an `Error` in the UI instead of panicking on the UI thread when
+        // `build_render_image` (`ui/image.rs`) later builds the `RenderImage`.
+        let expected_len = width as usize * height as usize * 4;
+        if data.len() != expected_len {
+            return Err(PyValueError::new_err(format!(
+                "Image data has {} bytes, but a {width}x{height} RGBA image needs {expected_len}",
+                data.len()
+            )));
+        }
         Ok(Output::Image(Image {
-            data,
+            data: rgba_to_bgra(&data),
             width,
             height,
         }))
@@ -155,5 +184,25 @@ fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
             "Invalid output type: {:?}",
             object.get_type().name()?
         )));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rgba_to_bgra_swaps_red_and_blue() {
+        // 1x1 red pixel, alpha 128: RGBA = [255, 0, 0, 128]
+        let rgba = vec![255u8, 0, 0, 128];
+        let bgra = rgba_to_bgra(&rgba);
+        assert_eq!(bgra, vec![0, 0, 255, 128]);
+    }
+
+    #[test]
+    fn swizzle_handles_multiple_pixels() {
+        let rgba = vec![10, 20, 30, 40, 50, 60, 70, 80];
+        let bgra = rgba_to_bgra(&rgba);
+        assert_eq!(bgra, vec![30, 20, 10, 40, 70, 60, 50, 80]);
     }
 }

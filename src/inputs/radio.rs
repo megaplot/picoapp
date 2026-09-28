@@ -9,14 +9,19 @@ impl PyRadio {
     pub fn new(obj: PyObject) -> Self {
         PyRadio(obj)
     }
-    pub fn clone_ref(&self, py: Python<'_>) -> PyRadio {
-        PyRadio::new(self.0.clone_ref(py))
-    }
     pub fn set_to_index(&self, py: Python<'_>, index: usize) -> PyResult<()> {
         let py_radio = self.0.bind(py);
         let values = py_radio.getattr("_values")?.downcast_into::<PySequence>()?;
         py_radio.setattr("_value", values.get_item(index)?)
     }
+}
+
+/// Pure-Rust half of a `Radio`, sent to the UI thread; see `into_parts`.
+#[derive(Debug, Clone)]
+pub struct RadioSpec {
+    pub name: String,
+    pub init_index: usize,
+    pub value_names: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -28,6 +33,27 @@ pub struct Radio {
     pub init_index: usize,
     pub value_names: Vec<String>,
     pub py_radio: PyRadio,
+}
+
+impl Radio {
+    /// Splits into the plain-data half sent to the UI and the `PyObject`
+    /// handle that stays on the worker thread.
+    pub fn into_parts(self) -> (RadioSpec, PyRadio) {
+        let Radio {
+            name,
+            init_index,
+            value_names,
+            py_radio,
+        } = self;
+        (
+            RadioSpec {
+                name,
+                init_index,
+                value_names,
+            },
+            py_radio,
+        )
+    }
 }
 
 impl<'py> FromPyObject<'py> for Radio {
