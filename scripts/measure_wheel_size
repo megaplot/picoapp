@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Builds a release wheel (via scripts/build_wheel, into a scratch directory
+# so there's no ambiguity about which wheel was just built) and appends its
+# size to ai/wheel_size_history.md, so wheel-size regressions show up in
+# `git log -p -- ai/wheel_size_history.md` instead of only being noticed
+# once the published wheel is already much bigger.
+#
+# Suggest running this (and reporting the result) after a non-trivial
+# change to src/ or to Cargo.toml's dependencies — see CLAUDE.md.
+#
+# Usage: scripts/measure_wheel_size
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+scratch_dir="$(mktemp -d)"
+trap 'rm -rf "$scratch_dir"' EXIT
+
+wheel_path="$(./scripts/build_wheel "$scratch_dir")"
+# GNU stat first (Linux CI), BSD stat as the macOS fallback.
+size_bytes=$(stat -c%s "$wheel_path" 2>/dev/null || stat -f%z "$wheel_path")
+size_human=$(du -h "$wheel_path" | cut -f1 | tr -d ' ')
+
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+platform=$(rustc -vV | sed -n 's/^host: //p')
+timestamp=$(date -u +%Y-%m-%dT%H:%MZ)
+
+log_file="ai/wheel_size_history.md"
+row="| $timestamp | $version | $platform | $size_human | $size_bytes |"
+
+echo "$row"
+if [[ -f "$log_file" ]]; then
+    echo "$row" >>"$log_file"
+    echo "Appended to $log_file (unstaged — review and commit it yourself)." 1>&2
+else
+    echo "warning: $log_file not found, row not appended" 1>&2
+fi

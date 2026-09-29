@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Builds a release wheel via maturin (host platform only — no cross
+# compilation; see .github/workflows/deploy.yml for that). Prints the
+# built wheel's path on stdout; maturin's own build log goes to stderr,
+# so `wheel=$(scripts/build_wheel)` captures just the path.
+#
+# Usage: scripts/build_wheel [OUT_DIR]   (default: dist)
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+
+OUT_DIR="${1:-dist}"
+
+cd "$PROJECT_ROOT"
+
+maturin build --release --out "$OUT_DIR" 1>&2
+
+# maturin overwrites same-version wheels in place, so a fresh OUT_DIR has
+# exactly one; sort -V so a stale, lower-versioned wheel from an older run
+# in a reused OUT_DIR (e.g. "dist") doesn't win over the one just built.
+ls -1 "$OUT_DIR"/*.whl | sort -V | tail -1

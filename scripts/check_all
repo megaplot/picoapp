@@ -31,7 +31,7 @@ echo -e "\n*** Rust: tests"
 ./scripts/check_rust_test
 
 echo -e "\n*** Rebuilding native extension"
-maturin develop --uv
+./scripts/maturin_develop
 
 echo -e "\n*** Python: check types"
 ./scripts/check_python_types

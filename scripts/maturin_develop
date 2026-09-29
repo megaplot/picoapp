@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Rebuilds the Rust extension and installs it into the dev venv (editable).
+# REQUIRED after any src/*.rs change before Python picks it up — run before
+# `python examples/example_X.py` or the Python checks/tests.
+#
+# The one canonical spot for this command: checks.yaml's "Install native
+# package" step and scripts/check_all both call this script instead of
+# inlining `maturin develop --uv` themselves, so there's one place to change
+# if the invocation ever needs a flag.
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+if [[ -z "$VENV_DIR" ]]; then
+    echo "\$VENV_DIR must be set (source env.sh first)" 1>&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+maturin develop --uv
