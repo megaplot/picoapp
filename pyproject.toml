@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "picoapp"
-requires-python = ">=3.10"
+requires-python = ">=3.10" # keep in line with xref:min-python-version
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",

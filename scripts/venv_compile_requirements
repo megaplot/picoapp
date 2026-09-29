@@ -19,4 +19,5 @@ fi
 
 cd "$PROJECT_ROOT"
 
+# keep in line with xref:min-python-version
 uv pip compile requirements.in requirements_dev.in -U --universal --python-version 3.10 -o requirements.txt
