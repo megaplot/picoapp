@@ -1,34 +1,31 @@
 use std::cell::RefCell;
-use std::sync::{Arc, Mutex};
+use std::num::NonZero;
+use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::component::button::Button;
-
-use crate::ui::style::{CONTROL_GAP, card};
 use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div, px, relative};
-use rodio::{OutputStream, OutputStreamHandle, Sink};
+use rodio::mixer::Mixer;
+use rodio::{ChannelCount, DeviceSinkBuilder, MixerDeviceSink, Player, SampleRate, nz};
 
 use crate::outputs::Audio;
+use crate::ui::style::{CONTROL_GAP, card};
 
 thread_local! {
-    // Note that the `OutputStream` must be kept alive as long as the `Sink` is
-    // in use. Since an `OutputStream` is not `Send`, it doesn't really make
-    // sense to hold an `(OutputStream, Sink)` below, because we wouldn't be
-    // able to use it from the monitoring thread. It's probably best to share
-    // the output stream via thread-local storage.
-    static STREAM: RefCell<Option<(OutputStream, OutputStreamHandle)>> = RefCell::new(None);
+    // Note that the `MixerDeviceSink` must be kept alive as long as any
+    // `Player` built from its mixer is in use. It isn't `Send` (it owns a
+    // cpal stream), so share it via thread-local storage instead.
+    static DEVICE_SINK: RefCell<Option<MixerDeviceSink>> = RefCell::new(None);
 }
 
-fn get_output_stream_handle() -> OutputStreamHandle {
-    STREAM.with_borrow_mut(|stream_tup| {
-        if let Some((_stream, stream_handle)) = stream_tup {
-            stream_handle.clone()
-        } else {
-            let (stream, stream_handle) = OutputStream::try_default().unwrap();
-            *stream_tup = Some((stream, stream_handle.clone()));
-            stream_handle
-        }
+/// Runs `f` with the thread's shared output device's mixer, opening the
+/// default output device on first use.
+fn with_mixer<R>(f: impl FnOnce(&Mixer) -> R) -> R {
+    DEVICE_SINK.with_borrow_mut(|device_sink| {
+        let device_sink =
+            device_sink.get_or_insert_with(|| DeviceSinkBuilder::open_default_sink().unwrap());
+        f(device_sink.mixer())
     })
 }
 
@@ -55,16 +52,16 @@ impl Iterator for AudioWrapper {
 
 impl rodio::Source for AudioWrapper {
     #[inline]
-    fn current_frame_len(&self) -> Option<usize> {
+    fn current_span_len(&self) -> Option<usize> {
         None
     }
     #[inline]
-    fn channels(&self) -> u16 {
-        1
+    fn channels(&self) -> ChannelCount {
+        nz!(1)
     }
     #[inline]
-    fn sample_rate(&self) -> u32 {
-        self.audio.sr
+    fn sample_rate(&self) -> SampleRate {
+        NonZero::new(self.audio.sr).expect("sample rate must be non-zero")
     }
     #[inline]
     fn total_duration(&self) -> Option<Duration> {
@@ -79,19 +76,21 @@ impl rodio::Source for AudioWrapper {
 
 pub struct AudioPlayer {
     audio: Audio,
-    sink: Arc<Mutex<Sink>>,
+    // `Player`'s own methods (`play`/`pause`/`append`/...) all take `&self`,
+    // so an `Arc` is enough to share it with the polling task spawned below
+    // — no `Mutex` needed on top.
+    player: Arc<Player>,
     playing: bool,
     progress: f32,
 }
 
 impl AudioPlayer {
     pub fn new(audio: Audio) -> Self {
-        let stream_handle = get_output_stream_handle();
-        let sink = Sink::try_new(&stream_handle).unwrap();
+        let player = with_mixer(Player::connect_new);
 
         AudioPlayer {
             audio,
-            sink: Arc::new(Mutex::new(sink)),
+            player: Arc::new(player),
             playing: false,
             progress: 0.0,
         }
@@ -105,28 +104,25 @@ impl AudioPlayer {
     /// appended yet) and exit immediately, so progress would never update
     /// and `playing` would stay true forever after the first play.
     fn start_progress_polling(&mut self, cx: &mut Context<Self>) {
-        let sink_for_task = self.sink.clone();
+        let player = self.player.clone();
         let total = self.audio.length_in_sec();
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
                     .timer(Duration::from_millis(16))
                     .await;
-                let (playing, elapsed_fraction) = {
-                    let sink = sink_for_task.lock().unwrap();
-                    if sink.empty() {
-                        (false, 0.0)
-                    } else {
-                        // A paused sink isn't `empty()`, so it must be checked
-                        // separately — otherwise `playing` flips back to `true`
-                        // within one tick of pausing (`toggle`'s own `pause()`
-                        // call already set it to `false`), and the button label
-                        // never leaves "Pause". `get_pos()` still reflects the
-                        // frozen position while paused, so the bar doesn't jump.
-                        let paused = sink.is_paused();
-                        let pos = sink.get_pos().as_secs_f32();
-                        (!paused, (pos / total.max(1e-6)).clamp(0.0, 1.0))
-                    }
+                let (playing, elapsed_fraction) = if player.empty() {
+                    (false, 0.0)
+                } else {
+                    // A paused sink isn't `empty()`, so it must be checked
+                    // separately — otherwise `playing` flips back to `true`
+                    // within one tick of pausing (`toggle`'s own `pause()`
+                    // call already set it to `false`), and the button label
+                    // never leaves "Pause". `get_pos()` still reflects the
+                    // frozen position while paused, so the bar doesn't jump.
+                    let paused = player.is_paused();
+                    let pos = player.get_pos().as_secs_f32();
+                    (!paused, (pos / total.max(1e-6)).clamp(0.0, 1.0))
                 };
                 let should_stop = this
                     .update(cx, |this, cx| {
@@ -148,28 +144,20 @@ impl AudioPlayer {
     }
 
     fn toggle(&mut self, cx: &mut Context<Self>) {
-        // Lock through a cloned `Arc` handle, not `self.sink` directly, so
-        // the `MutexGuard`'s lifetime isn't tied to `self` — otherwise it
-        // would still be considered borrowed when `self.start_progress_polling`
-        // (which needs `&mut self`) is called below.
-        let sink_handle = self.sink.clone();
-        let sink = sink_handle.lock().unwrap();
-        let just_started_or_resumed = if sink.empty() {
-            drop(sink);
-            let sink = sink_handle.lock().unwrap();
-            sink.append(AudioWrapper {
+        let just_started_or_resumed = if self.player.empty() {
+            self.player.append(AudioWrapper {
                 audio: self.audio.clone(),
                 num_sample: 0,
             });
-            sink.play();
+            self.player.play();
             self.playing = true;
             true
         } else if self.playing {
-            sink.pause();
+            self.player.pause();
             self.playing = false;
             false
         } else {
-            sink.play();
+            self.player.play();
             self.playing = true;
             true
         };

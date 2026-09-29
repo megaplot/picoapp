@@ -15,14 +15,16 @@ pub struct Callback(Py<PyAny>);
 impl Callback {
     /// Abstraction for our "unary" call of the callback.
     pub fn call(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        self.0.call_bound(py, (), None)
+        self.0.call(py, (), None)
     }
 }
 
-impl<'py> FromPyObject<'py> for Callback {
-    fn extract_bound(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Callback {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         if obj.is_callable() {
-            Ok(Callback(obj.clone().unbind()))
+            Ok(Callback(obj.to_owned().unbind()))
         } else {
             Err(PyValueError::new_err(format!(
                 "Invalid callback type (not callable): {:?}",

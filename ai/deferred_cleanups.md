@@ -7,13 +7,6 @@ longer applies; don't let this file grow into a graveyard.
 
 Each entry: where, what, why it can wait, when it was noted.
 
-## `AudioPlayer`'s `sink` is `Arc<Mutex<Sink>>`, but nothing is cross-thread anymore
-
-- **Where**: `src/ui/audio.rs`, `AudioPlayer::sink` and `toggle()`'s lock/drop/relock dance.
-- **What**: the `Arc<Mutex<..>>` dates from a design where a separate OS thread polled playback progress. That's gone (`start_progress_polling` runs as a `cx.spawn` task on gpui's own executor), so the mutex just adds ceremony — `toggle()` locks, drops, and relocks the same sink to avoid a borrow conflict with `&mut self`.
-- **Why deferred**: cosmetic; works correctly as is. Worth simplifying to a plain `Rc<RefCell<Sink>>` (or no indirection at all, if gpui's executor guarantees single-threaded access) next time this file is touched.
-- **Noted**: 2026-09-25, gpui migration review.
-
 ## `PlotColors.line` authored differently from the other fields
 
 - **Where**: `src/ui/style.rs`, `plot_colors()`.
@@ -41,10 +34,3 @@ Each entry: where, what, why it can wait, when it was noted.
 - **What**: `logging_setup.rs` only configures `tracing`'s output; it doesn't touch the panic hook. A genuine Rust-side panic (an `.unwrap()`/`.expect()`/index panic in our own code — not a Python exception raised in the user's callback, which pyo3 turns into a normal `PyErr` and never reaches Rust's panic machinery) prints "thread ... panicked at ..." to stderr via Rust's default hook *before* pyo3's `catch_unwind` turns it into a `PanicException`, regardless of `RUST_LOG`/CLAUDE.md's "prints nothing by default".
 - **Why deferred**: only reachable via an actual Rust-side bug, not from any known callback error path today; confirmed while investigating `ai/wheel_size.md`'s `strip = true` question, not something we went looking for. A fix (installing a custom `std::panic::set_hook` that routes through the same silent-by-default machinery) is straightforward but untested and orthogonal to what surfaced it.
 - **Noted**: 2026-09-28, wheel-size investigation.
-
-## pyo3 is several majors behind latest (0.22 vs 0.29+)
-
-- **Where**: `Cargo.toml`.
-- **What**: `src/py_module.rs` carries a `#![allow(unsafe_op_in_unsafe_fn)]` worked around a pyo3 0.22 / edition 2024 interaction; a newer pyo3 likely doesn't need it. A jump this size is its own migration (API changes across every `Bound`/`FromPyObject` use site), not a quick bump.
-- **Why deferred**: no functional problem today; the `allow` is documented and scoped. Worth its own task when there's a concrete reason to upgrade (a needed pyo3 feature/fix), not preemptively.
-- **Noted**: 2026-09-25, gpui migration review.

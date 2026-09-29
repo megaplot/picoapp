@@ -3,15 +3,15 @@ use pyo3::types::PySequence;
 
 /// Wrapper newtype for the underlying PyObject instance.
 #[derive(Debug)]
-pub struct PyRadio(PyObject);
+pub struct PyRadio(Py<PyAny>);
 
 impl PyRadio {
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         PyRadio(obj)
     }
     pub fn set_to_index(&self, py: Python<'_>, index: usize) -> PyResult<()> {
         let py_radio = self.0.bind(py);
-        let values = py_radio.getattr("_values")?.downcast_into::<PySequence>()?;
+        let values = py_radio.getattr("_values")?.cast_into::<PySequence>()?;
         py_radio.setattr("_value", values.get_item(index)?)
     }
 }
@@ -56,8 +56,10 @@ impl Radio {
     }
 }
 
-impl<'py> FromPyObject<'py> for Radio {
-    fn extract_bound(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Radio {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let name: String = obj.getattr("_name")?.extract()?;
         let init_index: usize = obj.getattr("_init_index")?.extract()?;
 
@@ -65,8 +67,8 @@ impl<'py> FromPyObject<'py> for Radio {
         // infer the label strings.
         let mut value_names = Vec::<String>::new();
         let raw_values = obj.getattr("_values")?;
-        let raw_values = raw_values.downcast::<PySequence>()?;
-        for raw_value in raw_values.iter()? {
+        let raw_values = raw_values.cast::<PySequence>()?;
+        for raw_value in raw_values.try_iter()? {
             let raw_value = raw_value?;
             let value_name: String = raw_value.call_method("__str__", (), None)?.extract()?;
             value_names.push(value_name);
@@ -76,7 +78,7 @@ impl<'py> FromPyObject<'py> for Radio {
             name,
             init_index,
             value_names,
-            py_radio: PyRadio::new(obj.clone().unbind()),
+            py_radio: PyRadio::new(obj.to_owned().unbind()),
         })
     }
 }

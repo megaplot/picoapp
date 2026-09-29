@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use gpui_kit::component::{ActiveTheme, Root, v_flex};
+use gpui_kit::component::{ActiveTheme, v_flex};
 use gpui_kit::{
     App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Point, Render, Styled,
-    TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
+    TitlebarOptions, Window, WindowBounds, WindowOptions, div, open_window, px, size,
 };
 use log::info;
 use pyo3::prelude::*;
@@ -15,24 +15,6 @@ use crate::ui::reactive_view::ReactiveView;
 use crate::ui::style::GUTTER;
 use crate::utils::Callback;
 use crate::worker::spawn;
-
-/// gpui-kit 0.6.6 (the version pinned by this crate) does not yet publish
-/// the `gpui_kit::open_window` convenience wrapper that a newer, unreleased
-/// gpui-kit does. This reimplements it: open a plain gpui window via
-/// `App::open_window` and wrap the built view in `gpui_kit::component::Root`,
-/// which is what the newer wrapper does internally — same behavior
-/// (dialogs/sheets/notifications/menus work), just not hidden behind a
-/// helper function.
-fn open_window<V: 'static + Render>(
-    options: WindowOptions,
-    cx: &mut App,
-    build: impl FnOnce(&mut Window, &mut App) -> gpui_kit::Entity<V>,
-) -> anyhow::Result<gpui_kit::WindowHandle<Root>> {
-    cx.open_window(options, |window, cx| {
-        let view = build(window, cx);
-        cx.new(|cx| Root::new(view, window, cx))
-    })
-}
 
 const APP_TITLE: &str = "pico app";
 
@@ -92,7 +74,7 @@ pub fn run_ui(py: Python<'_>, inputs: Inputs, callback: Callback) -> PyResult<()
     info!("Worker spawned, opening window (root's first job dispatches asynchronously)");
 
     let worker = Arc::new(worker);
-    py.allow_threads(move || {
+    py.detach(move || {
         gpui_kit::application()
             // Icons (checkmarks, window controls) are embedded SVG assets.
             .with_assets(gpui_kit::assets::Assets)
