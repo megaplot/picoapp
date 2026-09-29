@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Generic, Sequence, TypeVar
+from collections.abc import Sequence
+from typing import Generic, TypeVar
 
 
 class Slider:

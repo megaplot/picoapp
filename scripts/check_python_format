@@ -15,5 +15,4 @@ fi
 
 cd "$PROJECT_ROOT"
 
-black --check .
-isort --check .
+ruff format --check .

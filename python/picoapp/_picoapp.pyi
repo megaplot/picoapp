@@ -1,4 +1,4 @@
-from typing import Sequence
+from collections.abc import Sequence
 
 from ._types_inputs import Input
 from ._types_reactive import Callback

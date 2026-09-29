@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Callable
+from collections.abc import Callable
 
 from ._types_inputs import Inputs
 from ._types_outputs import Outputs

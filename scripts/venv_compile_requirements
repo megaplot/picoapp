@@ -1,6 +1,14 @@
 #!/bin/bash
 
 # Script to re-compile the requirements.
+#
+# --universal resolves across every Python version we support (not just
+# whichever interpreter happens to be running this script), emitting
+# per-package environment markers where a dependency's own supported version
+# differs by Python version (e.g. contourpy dropping <3.12 support in a
+# newer release) -- otherwise CI's older-Python legs can end up with an
+# unsatisfiable pin that a single-interpreter compile never sees. The
+# --python-version floor must match pyproject.toml's `requires-python`.
 
 set -e
 
@@ -11,4 +19,5 @@ fi
 
 cd "$PROJECT_ROOT"
 
-uv pip compile requirements.in requirements_dev.in -U -o requirements.txt
+# keep in line with xref:min-python-version
+uv pip compile requirements.in requirements_dev.in -U --universal --python-version 3.10 -o requirements.txt

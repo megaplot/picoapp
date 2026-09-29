@@ -15,4 +15,4 @@ fi
 
 cd "$PROJECT_ROOT"
 
-flake8
+ruff check .
