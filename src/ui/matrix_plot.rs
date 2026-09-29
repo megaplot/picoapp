@@ -45,7 +45,7 @@ impl Plot for MatrixPlotView {
 
         // Pixel y grows downward; a plotters cartesian chart's y grows
         // upward, so row 0 is its *bottom* row (see line_plot.rs).
-        let row_y = ScaleLinear::new(vec![0.0, rows as f64], vec![height, 0.0]);
+        let row_y = ScaleLinear::new(vec![0.0, rows as f64], [height, 0.0]);
 
         for (row_idx, row) in self.data.matrix.iter().enumerate() {
             let Some(y) = row_y.tick(&((row_idx + 1) as f64)) else {

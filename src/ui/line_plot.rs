@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gpui_kit::component::plot::{
-    AxisLabelSide, Grid, IntoPlot, Plot, PlotAxis, StrokeStyle,
+    AxisLabelSide, Curve, Grid, IntoPlot, Plot, PlotAxis,
     scale::{Scale, ScaleLinear},
     shape::Line,
 };
@@ -82,9 +82,9 @@ impl Plot for LinePlot {
             self.data.y_limits.start as f64,
             self.data.y_limits.end as f64,
         );
-        let x_scale = ScaleLinear::new(vec![x0, x1], vec![0.0, width]);
+        let x_scale = ScaleLinear::new(vec![x0, x1], [0.0, width]);
         // Pixel y grows downward; plot y grows upward.
-        let y_scale = ScaleLinear::new(vec![y0, y1], vec![height, 0.0]);
+        let y_scale = ScaleLinear::new(vec![y0, y1], [height, 0.0]);
 
         let x_ticks = nice_ticks(x0, x1, 8);
         let y_ticks = nice_ticks(y0, y1, 8);
@@ -128,7 +128,7 @@ impl Plot for LinePlot {
             .x(move |&i| x_scale.tick(&data_for_x.xs[i]))
             .y(move |&i| y_scale.tick(&data_for_y.ys[i]))
             .stroke(colors.line)
-            .stroke_style(StrokeStyle::Linear)
+            .curve(Curve::Linear)
             .stroke_width(px(1.5));
         // Clip to the plot area: data outside x_limits/y_limits is cut off at
         // the frame instead of drawing over the tick labels.
