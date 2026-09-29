@@ -172,19 +172,19 @@ fn worker_loop(mut registry: Registry, receiver: mpsc::Receiver<Job>) {
                 values,
                 reply,
             } => {
-                let result = Python::with_gil(|py| registry.run_job(py, level, &values));
+                let result = Python::attach(|py| registry.run_job(py, level, &values));
                 // Ignore a failed send: it only means the UI dropped the
                 // receiver (view released while its job was in flight).
                 let _ = reply.send(result);
             }
             Job::Drop { level } => {
-                Python::with_gil(|_py| registry.drop_level(level));
+                Python::attach(|_py| registry.drop_level(level));
             }
         }
     }
-    // Channel closed: drop the registry under the GIL so every Py handle
+    // Channel closed: drop the registry while attached so every Py handle
     // is released correctly.
-    Python::with_gil(|_py| drop(registry));
+    Python::attach(|_py| drop(registry));
 }
 
 #[cfg(test)]
@@ -201,8 +201,8 @@ mod tests {
         // doesn't touch Python at all when the level is absent, so this
         // doesn't need a real callback either.
         let level = LevelId(0);
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        Python::initialize();
+        Python::attach(|py| {
             let result = registry.run_job(py, level, &[]);
             assert!(matches!(result, UiLevelResult::Discarded));
         });
@@ -217,13 +217,13 @@ mod tests {
     /// a regression here fails this test instead of hanging the suite.
     #[test]
     fn dropping_the_last_worker_handle_does_not_hang() {
-        pyo3::prepare_freethreaded_python();
+        Python::initialize();
         let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let done_writer = done.clone();
         std::thread::spawn(move || {
-            let (worker, _root) = Python::with_gil(|py| {
+            let (worker, _root) = Python::attach(|py| {
                 let callback: Callback = py
-                    .eval_bound("lambda: None", None, None)
+                    .eval(c"lambda: None", None, None)
                     .unwrap()
                     .extract()
                     .unwrap();

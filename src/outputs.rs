@@ -68,13 +68,13 @@ pub enum CallbackReturn {
 /// `PyTraceback::format` and appended when present.
 pub fn format_traceback(py: Python<'_>, err: &PyErr) -> String {
     let message = err.to_string();
-    match err.traceback_bound(py).and_then(|tb| tb.format().ok()) {
+    match err.traceback(py).and_then(|tb| tb.format().ok()) {
         Some(frames) => format!("{message}\n\n{frames}"),
         None => message,
     }
 }
 
-pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<CallbackReturn> {
+pub fn parse_callback_return(py: Python<'_>, cb_return: Py<PyAny>) -> PyResult<CallbackReturn> {
     let cb_return = cb_return.bind(py);
     if cb_return.get_type().name()? == "Outputs" {
         return Ok(CallbackReturn::Outputs(parse_outputs(
@@ -102,10 +102,10 @@ pub fn parse_callback_return(py: Python<'_>, cb_return: PyObject) -> PyResult<Ca
     }
 }
 
-pub fn parse_outputs(py: Python<'_>, outputs: PyObject) -> PyResult<Vec<Output>> {
+pub fn parse_outputs(py: Python<'_>, outputs: Py<PyAny>) -> PyResult<Vec<Output>> {
     let output = outputs.bind(py);
     let mut results = Vec::new();
-    for object in output.iter()? {
+    for object in output.try_iter()? {
         let object = object?;
         let output = parse_output(&object)?;
         results.push(output);

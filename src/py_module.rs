@@ -1,11 +1,3 @@
-// pyo3 0.22's `#[pyfunction]`/`#[pymodule]` macros expand argument
-// extraction into calls to an unsafe function without wrapping them in an
-// `unsafe` block, relying on the pre-2024 rule that an unsafe fn body is
-// itself an unsafe context. Edition 2024 tightens that (`unsafe_op_in_unsafe_fn`
-// is now warn-by-default), so every macro-generated function in this file
-// warns until pyo3 catches up. Fix upstream, not ours to silence per call site.
-#![allow(unsafe_op_in_unsafe_fn)]
-
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PySequence;
@@ -63,7 +55,7 @@ fn run_worker_job(
     }
 
     let mut input_values = Vec::new();
-    for (binding, raw_value) in bindings.iter().zip(values.iter()?) {
+    for (binding, raw_value) in bindings.iter().zip(values.try_iter()?) {
         let raw_value = raw_value?;
         let value = match binding {
             crate::inputs::InputBinding::Slider(_) => InputValue::F64(raw_value.extract()?),

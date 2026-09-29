@@ -15,8 +15,10 @@ pub enum Input {
     Radio(Radio),
 }
 
-impl<'py> FromPyObject<'py> for Input {
-    fn extract_bound(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Input {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         if obj.get_type().name()? == "Slider" {
             Ok(Input::Slider(obj.extract()?))
         } else if obj.get_type().name()? == "IntSlider" {

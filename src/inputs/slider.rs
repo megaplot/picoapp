@@ -4,15 +4,15 @@ use pyo3::prelude::*;
 
 /// Wrapper newtype for the underlying PyObject instance.
 #[derive(Debug)]
-pub struct PySlider<T>(PyObject, PhantomData<T>)
+pub struct PySlider<T>(Py<PyAny>, PhantomData<T>)
 where
-    T: IntoPy<Py<PyAny>>;
+    T: for<'py> IntoPyObject<'py>;
 
 impl<T> PySlider<T>
 where
-    T: IntoPy<Py<PyAny>>,
+    T: for<'py> IntoPyObject<'py>,
 {
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         PySlider(obj, PhantomData)
     }
     pub fn set_value(&self, py: Python<'_>, value: T) -> PyResult<()> {
@@ -36,7 +36,7 @@ pub struct SliderSpec<T> {
 #[derive(Debug)]
 pub struct Slider<T>
 where
-    T: IntoPy<Py<PyAny>>,
+    T: for<'py> IntoPyObject<'py>,
 {
     pub name: String,
     pub min: T,
@@ -51,7 +51,7 @@ where
 
 impl<T> Slider<T>
 where
-    T: IntoPy<Py<PyAny>>,
+    T: for<'py> IntoPyObject<'py>,
 {
     /// Splits into the plain-data half sent to the UI and the `PyObject`
     /// handle that stays on the worker thread.
@@ -80,15 +80,20 @@ where
 }
 
 // https://github.com/PyO3/pyo3/discussions/3058
-impl<'py, T> FromPyObject<'py> for Slider<T>
+impl<'a, 'py, T> FromPyObject<'a, 'py> for Slider<T>
 where
-    T: for<'a> FromPyObject<'a> + IntoPy<Py<PyAny>>,
+    T: FromPyObjectOwned<'py> + for<'p> IntoPyObject<'p>,
 {
-    fn extract_bound(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let name: String = obj.getattr("_name")?.extract()?;
-        let min: T = obj.getattr("_min")?.extract()?;
-        let init: T = obj.getattr("_init")?.extract()?;
-        let max: T = obj.getattr("_max")?.extract()?;
+        // `?` needs `PyErr: From<T::Error>`, but `T::Error` is only known to
+        // satisfy the (equivalent) `Into<PyErr>` at this generic call site —
+        // https://pyo3.rs, "FromPyObject reworked" migration note.
+        let min: T = obj.getattr("_min")?.extract().map_err(Into::into)?;
+        let init: T = obj.getattr("_init")?.extract().map_err(Into::into)?;
+        let max: T = obj.getattr("_max")?.extract().map_err(Into::into)?;
         let log: bool = obj.hasattr("_log")? && obj.getattr("_log")?.extract()?;
         let decimal_places: Option<usize> = if obj.hasattr("_decimal_places")? {
             obj.getattr("_decimal_places")?.extract()?
@@ -103,7 +108,7 @@ where
             max,
             log,
             decimal_places,
-            py_slider: PySlider::new(obj.clone().unbind()),
+            py_slider: PySlider::new(obj.to_owned().unbind()),
         })
     }
 }

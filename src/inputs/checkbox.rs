@@ -2,10 +2,10 @@ use pyo3::prelude::*;
 
 /// Wrapper newtype for the underlying PyObject instance.
 #[derive(Debug)]
-pub struct PyCheckbox(PyObject);
+pub struct PyCheckbox(Py<PyAny>);
 
 impl PyCheckbox {
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         PyCheckbox(obj)
     }
     pub fn set_value(&self, py: Python<'_>, value: bool) -> PyResult<()> {
@@ -40,15 +40,17 @@ impl Checkbox {
     }
 }
 
-impl<'py> FromPyObject<'py> for Checkbox {
-    fn extract_bound(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Checkbox {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let name: String = obj.getattr("_name")?.extract()?;
         let init: bool = obj.getattr("_init")?.extract()?;
 
         Ok(Checkbox {
             name,
             init,
-            py_checkbox: PyCheckbox::new(obj.clone().unbind()),
+            py_checkbox: PyCheckbox::new(obj.to_owned().unbind()),
         })
     }
 }
