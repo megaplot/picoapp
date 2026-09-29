@@ -120,3 +120,4 @@ UI stack: [gpui-kit](https://gpui-kit.com/) (`gpui-kit = "=0.6.6"`, pinned exact
 - `python/picoapp/_picoapp.pyi` is the hand-written stub for the Rust module; update it whenever the Rust signatures change.
 - mypy runs with `disallow_untyped_defs` (relaxed for `tests/`); formatting is black + isort at their defaults, flake8 at max-line-length 120.
 - `notes.md` collects research on maturin, PyO3 GIL/callback patterns, and manylinux cross-compilation — check it before re-investigating packaging problems.
+- `Cargo.toml` dependencies: since picoapp is a binary/application (a `cdylib`), not a library other crates depend on, pin the exact version currently in use as the lower bound (e.g. `pyo3 = "0.29.2"`, not `"0.29"` or `"0.22"`) rather than leaving room for a caret range to silently pick up a newer minor version. Keep the `[dependencies]` (and `[dev-dependencies]`) list alphabetically sorted.
