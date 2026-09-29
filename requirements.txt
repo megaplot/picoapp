@@ -4,16 +4,12 @@ ast-serialize==0.11.2
     # via mypy
 asttokens==3.0.2
     # via stack-data
-black==26.5.1
-    # via -r requirements_dev.in
 certifi==2026.7.22
     # via requests
 cffi==2.1.1
     # via soundfile
 charset-normalizer==3.5.1
     # via requests
-click==8.5.0
-    # via black
 cloudpickle==3.1.2
     # via joblib
 contourpy==1.4.0
@@ -24,8 +20,6 @@ decorator==5.3.1
     # via librosa
 executing==2.2.1
     # via stack-data
-flake8==7.4.1
-    # via -r requirements_dev.in
 fonttools==4.66.0
     # via matplotlib
 idna==3.20
@@ -36,8 +30,6 @@ ipython==9.17.1
     # via -r requirements_dev.in
 ipython-pygments-lexers==1.1.1
     # via ipython
-isort==9.0.2
-    # via -r requirements_dev.in
 jedi==0.20.0
     # via ipython
 joblib==1.6.0
@@ -62,17 +54,12 @@ matplotlib-inline==0.2.2
     # via ipython
 maturin==1.15.0
     # via -r requirements_dev.in
-mccabe==0.7.0
-    # via flake8
 msgpack==1.2.3
     # via librosa
 mypy==2.3.1
     # via -r requirements_dev.in
 mypy-extensions==1.1.0
-    # via
-    #   black
-    #   isort
-    #   mypy
+    # via mypy
 narwhals==2.26.0
     # via scikit-learn
 numba==0.67.0
@@ -92,7 +79,6 @@ numpy==2.5.3
     #   soxr
 packaging==26.3
     # via
-    #   black
     #   lazy-loader
     #   matplotlib
     #   pooch
@@ -102,17 +88,13 @@ parso==0.8.7
 patchelf==0.19.1.0
     # via maturin
 pathspec==1.1.1
-    # via
-    #   black
-    #   mypy
+    # via mypy
 pexpect==4.9.0
     # via ipython
 pillow==12.3.0
     # via matplotlib
 platformdirs==4.12.1
-    # via
-    #   black
-    #   pooch
+    # via pooch
 pluggy==1.6.0
     # via pytest
 pooch==1.9.0
@@ -125,12 +107,8 @@ ptyprocess==0.7.0
     # via pexpect
 pure-eval==0.2.4
     # via stack-data
-pycodestyle==2.15.0
-    # via flake8
 pycparser==3.0
     # via cffi
-pyflakes==4.0.0
-    # via flake8
 pygments==2.21.0
     # via
     #   ipython
@@ -142,10 +120,10 @@ pytest==9.1.1
     # via -r requirements_dev.in
 python-dateutil==2.9.0.post0
     # via matplotlib
-pytokens==0.4.1
-    # via black
 requests==2.34.2
     # via pooch
+ruff==0.16.9
+    # via -r requirements_dev.in
 scikit-learn==1.9.1
     # via librosa
 scipy==1.18.1

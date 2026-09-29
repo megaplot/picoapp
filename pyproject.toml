@@ -27,3 +27,12 @@ dependencies = [
 python-source = "python"
 module-name = "picoapp._picoapp"
 features = ["pyo3/extension-module"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint.isort]
+# picoapp isn't always installed editable when ruff runs (e.g. a bare `ruff
+# check` without the venv active), so its own first/third-party heuristics
+# can't reliably tell it apart from numpy etc. — spell it out instead.
+known-first-party = ["picoapp"]

@@ -1,10 +1,8 @@
-black
-flake8
-isort
 ipython
 maturin[patchelf]
 mypy
 pytest
+ruff
 
 # Used for examples / preparation
 librosa
