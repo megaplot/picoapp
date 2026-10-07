@@ -5,7 +5,9 @@
 #
 # ...but this file has hand edits since generation — regenerating from
 # scratch will silently lose them. Each deviation from the generated output
-# is called out with a comment below, at the point it was made.
+# is called out with a comment below, at the point it was made. Last
+# compared against maturin v1.15.0's output; template changes not adopted
+# (yet) are noted the same way.
 name: deploy
 
 on:
@@ -13,8 +15,9 @@ on:
     branches:
       - main
       - master
-    tags:
-      - '*'
+    # Generated default also triggered on `tags: ['*']`, releasing on a
+    # manually pushed tag. Dropped: the release job below releases straight
+    # from a push to main instead, and creates the tag itself.
   pull_request:
   workflow_dispatch:
 
@@ -47,15 +50,25 @@ jobs:
           # - runner: ubuntu-latest
           #   target: ppc64le
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.10 python3.11 python3.12
+          # Generated default is `--find-interpreter`, which builds for every
+          # interpreter it finds -- including pre-release Pythons the
+          # manylinux images ship early, which fails as soon as one is newer
+          # than the pyo3 version supports (the likely reason this was
+          # switched to an explicit list in 2024, on pyo3 0.21). Explicit also
+          # means a new Python version is a deliberate, tested opt-in.
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
+          # Newer template disables sccache for release builds (there:
+          # `!startsWith(github.ref, 'refs/tags/')`; here that would be pushes
+          # to main). Not adopted for now: cache scopes already keep PR runs
+          # from writing to main's cache, and it would slow down every main build.
           sccache: 'true'
           # Generated default was `auto` (manylinux2014, CentOS 7-based):
           # its yum repos don't carry libxkbcommon-x11-devel/wayland-devel/
@@ -102,7 +115,7 @@ jobs:
                 ;;
             esac
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
@@ -132,7 +145,7 @@ jobs:
   #       uses: PyO3/maturin-action@v1
   #       with:
   #         target: ${{ matrix.platform.target }}
-  #         args: --release --out dist --interpreter python3.10 python3.11 python3.12
+  #         args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
   #         sccache: 'true'
   #         manylinux: musllinux_1_2
   #         before-script-linux: |
@@ -168,9 +181,11 @@ jobs:
           # 32-bit `x86` was also generated here originally and dropped
           # alongside Linux `x86` above, for the same reason (see the Linux
           # job's comment) — not independently re-verified for Windows.
+          # The newer template also builds `aarch64` on windows-11-arm; not
+          # adopted (yet) — a new platform to support and test, not a fix.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
           architecture: ${{ matrix.platform.target }}
@@ -178,10 +193,10 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
           sccache: 'true'
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-windows-${{ matrix.platform.target }}
           path: dist
@@ -193,24 +208,26 @@ jobs:
         platform:
           # Generated default was macos-13 for x86_64; GitHub deprecated
           # that runner image, so both rows now use macos-14 (aarch64,
-          # cross-compiling to x86_64 for the first row).
+          # cross-compiling to x86_64 for the first row). The newer template
+          # builds x86_64 natively on macos-15-intel instead; not adopted
+          # (yet), since cross-compiling works.
           - runner: macos-14
             target: x86_64
           - runner: macos-14
             target: aarch64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
           sccache: 'true'
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
@@ -218,29 +235,49 @@ jobs:
   sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-sdist
           path: dist
 
+  # Replaces the generated tag-triggered release: runs on every run, and
+  # scripts/release_if_untagged decides. On a push to main whose Cargo.toml
+  # version has no tag yet, it publishes this run's artifacts and creates the
+  # tag; anywhere else (PRs, already-released versions) it's a dry run /
+  # no-op, so the release path is exercised before it matters.
+  # Template features not adopted (yet): `actions/attest` artifact
+  # attestations, and PyPI trusted publishing (OIDC) instead of the
+  # long-lived PYPI_API_TOKEN -- the latter needs a trusted publisher to be
+  # configured on PyPI's side first.
   release:
     name: Release
     runs-on: ubuntu-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
     needs: [linux, windows, macos, sdist] # musllinux
+    permissions:
+      contents: write # to push the release tag
+    # Two quick merges must not both see the version as untagged at once.
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      IS_RELEASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/download-artifact@v4
-      - name: Publish to PyPI
-        uses: PyO3/maturin-action@v1
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with:
-          command: upload
-          args: --non-interactive --skip-existing wheels-*/*
+          path: artifacts
+      - uses: astral-sh/setup-uv@v7
+      - name: Publish to PyPI and tag (dry run unless a push to main)
+        env:
+          # Only handed to runs that can actually release.
+          UV_PUBLISH_TOKEN: ${{ env.IS_RELEASE == 'true' && secrets.PYPI_API_TOKEN || '' }}
+        run: |
+          . env.sh
+          ./scripts/release_if_untagged $([[ "$IS_RELEASE" == "true" ]] && echo --push) artifacts/wheels-*/*

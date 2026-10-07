@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# Releases the current Cargo.toml version -- publishes DIST_FILEs to PyPI,
+# then tags the commit -- unless origin already has a tag for that version
+# (i.e. it is already released). deploy.yml's release job calls this on
+# every run: for real on pushes to main, as a dry run everywhere else.
+#
+# Dry run by default: checks the version and the dist files and runs
+# `uv publish --dry-run`, but neither uploads nor tags. `--push` uploads and
+# tags, and is refused anywhere but GitHub Actions on a push to main, so a
+# local or PR invocation can never publish or tag anything.
+#
+# Publishes before tagging: if tagging fails after a successful upload, a
+# re-run still sees the version as unreleased, re-uploads as a no-op
+# (--check-url skips files already on PyPI) and tags. Tagging first would
+# make a failed upload look released.
+#
+# Usage: scripts/release_if_untagged [--push] DIST_FILE...
+
+set -e
+
+if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "\$PROJECT_ROOT must be set" 1>&2
+    exit 1
+fi
+
+push=false
+if [[ "$1" == "--push" ]]; then
+    push=true
+    shift
+fi
+if [[ $# -eq 0 ]]; then
+    echo "Usage: $0 [--push] DIST_FILE..." 1>&2
+    exit 1
+fi
+
+# Resolved before the cd below, so relative paths work from any directory.
+dist_files=()
+for file in "$@"; do
+    dist_files+=("$(realpath -e "$file")")
+done
+
+cd "$PROJECT_ROOT"
+
+if $push; then
+    if [[ "$GITHUB_ACTIONS" != "true" || "$GITHUB_EVENT_NAME" != "push" || "$GITHUB_REF" != "refs/heads/main" ]]; then
+        echo "--push is only allowed on GitHub Actions for a push to main" 1>&2
+        exit 1
+    fi
+    # The tag must point at exactly the commit the dist files were built from.
+    if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+        echo "HEAD ($(git rev-parse HEAD)) is not the commit being released ($GITHUB_SHA)" 1>&2
+        exit 1
+    fi
+fi
+
+version=$(cargo metadata --no-deps --format-version 1 --offline |
+    python3 -c 'import json, sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "picoapp"))')
+
+# Asks origin rather than local tags: a CI checkout fetches none by default.
+# --exit-code returns 2 for "no such ref"; anything else non-zero is a real
+# error (e.g. network) and must not be mistaken for "unreleased".
+set +e
+git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null
+ls_remote_status=$?
+set -e
+if [[ $ls_remote_status -eq 0 ]]; then
+    echo "Version $version is already released (tag exists on origin), nothing to do."
+    exit 0
+elif [[ $ls_remote_status -ne 2 ]]; then
+    echo "Failed to query origin for tag $version" 1>&2
+    exit 1
+fi
+
+# Guards against publishing stale artifacts built from another version.
+for file in "${dist_files[@]}"; do
+    name=$(basename "$file")
+    if [[ "$name" != "picoapp-$version-"*.whl && "$name" != "picoapp-$version.tar.gz" ]]; then
+        echo "$file doesn't belong to version $version" 1>&2
+        exit 1
+    fi
+done
+
+publish_args=(--check-url https://pypi.org/simple/ --trusted-publishing never)
+if ! $push; then
+    publish_args+=(--dry-run)
+fi
+uv publish "${publish_args[@]}" "${dist_files[@]}"
+
+if $push; then
+    git tag "$version"
+    git push origin "refs/tags/$version"
+    echo "Released $version."
+else
+    echo "Dry run: would tag $(git rev-parse --short HEAD) as $version and push the tag."
+fi

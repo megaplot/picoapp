@@ -3,6 +3,7 @@
 ## 0.3.1
 
 - Bumped Rust dependencies (pyo3, rodio, gpui-kit and others) to their latest versions
+- Added prebuilt wheels for Python 3.13 and 3.14 (previously installed by compiling from source)
 
 ## 0.3.0
 
