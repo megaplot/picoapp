@@ -3,6 +3,9 @@
 #
 #    maturin generate-ci github
 #
+# ...but this file has hand edits since generation — regenerating from
+# scratch will silently lose them. Each deviation from the generated output
+# is called out with a comment below, at the point it was made.
 name: deploy
 
 on:
@@ -26,6 +29,14 @@ jobs:
         platform:
           - runner: ubuntu-latest
             target: x86_64
+          # 32-bit `x86` was also generated here originally and dropped when
+          # switching from cushy to gpui-kit for the UI: cross-compiling
+          # gpui's C-FFI windowing deps (e.g. wayland-backend's C shim) for
+          # i686 needs 32-bit system headers/libs that aren't reliably
+          # available, the same class of problem as the targets disabled
+          # below. Not independently confirmed as a hard blocker (vs. just
+          # not worth the effort) — 32-bit desktop Linux is a vanishingly
+          # small target today either way.
           # TODO: Try to make cross compilation work again...
           # - runner: ubuntu-latest
           #   target: aarch64
@@ -46,6 +57,12 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --interpreter python3.10 python3.11 python3.12
           sccache: 'true'
+          # Generated default was `auto` (manylinux2014, CentOS 7-based):
+          # its yum repos don't carry libxkbcommon-x11-devel/wayland-devel/
+          # fontconfig-devel at all (Wayland and modern xkbcommon-x11
+          # postdate CentOS 7), which gpui's Linux windowing backend needs.
+          # manylinux_2_28 (AlmaLinux 8-based) has them — see the yum
+          # install list in the x86_64 case below.
           manylinux: 2_28
           before-script-linux: |
             echo "Running before-script-linux for target: ${{ matrix.platform.target }}"
@@ -148,6 +165,9 @@ jobs:
         platform:
           - runner: windows-latest
             target: x64
+          # 32-bit `x86` was also generated here originally and dropped
+          # alongside Linux `x86` above, for the same reason (see the Linux
+          # job's comment) — not independently re-verified for Windows.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -171,6 +191,9 @@ jobs:
     strategy:
       matrix:
         platform:
+          # Generated default was macos-13 for x86_64; GitHub deprecated
+          # that runner image, so both rows now use macos-14 (aarch64,
+          # cross-compiling to x86_64 for the first row).
           - runner: macos-14
             target: x86_64
           - runner: macos-14
