@@ -55,7 +55,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
           sccache: 'true'
           # Generated default was `auto` (manylinux2014, CentOS 7-based):
           # its yum repos don't carry libxkbcommon-x11-devel/wayland-devel/
@@ -132,7 +132,7 @@ jobs:
   #       uses: PyO3/maturin-action@v1
   #       with:
   #         target: ${{ matrix.platform.target }}
-  #         args: --release --out dist --interpreter python3.10 python3.11 python3.12
+  #         args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
   #         sccache: 'true'
   #         manylinux: musllinux_1_2
   #         before-script-linux: |
@@ -178,7 +178,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -207,7 +207,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python3.10 python3.11 python3.12
+          args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
