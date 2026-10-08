@@ -187,6 +187,23 @@ Solid/Vue/MobX signals).
 expression; keeps hidden inputs alive → A/B works) or `render.ui` (resets). Two columns with the
 selector on top are trivial since layout is static.
 
+**Weaknesses relevant to picoapp.**
+
+- *Stringly typed input access.* An input is declared with a string ID (`ui.input_slider("n",
+  ...)`) and consumed as an attribute of a dynamic `input` object (`input.n()`). The two are only
+  linked by the string, so typos and type errors are not caught by a type checker, and the value
+  type of `input.n()` is not inferred. picoapp's "the input object *is* the handle" (`n.value`,
+  typed via the class) avoids this entirely.
+- *Layout is static by default, dynamic only via `render.ui`.* The compute graph makes the logical
+  structure easy to read, but the visual structure is a separate static UI tree with output
+  placeholders. Changing the layout fundamentally depending on an input (e.g. one vs. two columns,
+  or a completely different set of panels) requires `@render.ui`, which returns a fresh UI subtree
+  and thereby re-creates (and resets) every input inside it. Outputs inside a `render.ui` subtree
+  must still be pre-declared as separate `@render.*` functions referenced by string ID. The
+  alternative is `panel_conditional` with a JavaScript expression string. In the flat picoapp
+  proposal, the callback can return an arbitrary view on every run, and hoisted inputs keep their
+  state regardless.
+
 ## 5. marimo
 
 **Model.** Reactive notebook: cells form a DAG via the global variables they define/read. A UI
@@ -411,6 +428,48 @@ For picoapp's audience, (1) plus a cheap change signal fits best:
   they are hoisted. The gpui-component crate already ships `tab`, `accordion`, `collapsible`, and
   resizable `dock` panels.
 
+### Streamlit fragments mapped onto the flat model
+
+**Streamlit semantics.** On a full rerun, a `@st.fragment` function runs as part of the script, and
+its arguments are captured. Interacting with a widget *created inside* the fragment re-runs only
+that function, with the captured arguments, and its elements replace the fragment's previous
+elements in place. The main script does not run. If main-script code also reads the fragment's
+widget value (via `st.session_state`), that code is stale until the next full rerun. Streamlit
+accepts this staleness. `st.rerun(scope="app")` from inside the fragment forces a full run.
+
+**A picoapp equivalent** could look like this:
+
+```py
+def algo_panel(dataset: Dataset) -> pa.View:   # dataset computed by the main callback
+    params = algo_params[algo_select.value]
+    result = run_algo(dataset, params)         # expensive
+    return pa.Column(algo_select, *params.inputs, pa.Plot(...result...))
+
+def callback() -> pa.View:
+    dataset = make_dataset(...)
+    return pa.Row(dataset_panel(dataset), pa.Fragment(algo_panel, dataset))
+```
+
+- `pa.Fragment(fn, *args)` is a view element. On a full run, picoapp calls `fn(*args)` and records
+  which inputs appear in the returned subtree: the fragment *owns* those inputs. The worker keeps
+  `(fn, args)` per fragment, like the old `Registry` keeps nested levels.
+- On a change, if every changed input (after coalescing) is owned by the same fragment, picoapp
+  sends a `Job::RunFragment(id)`. It runs `fn(*captured_args)` and splices the new subtree into the
+  last view. Otherwise it does a full run.
+- The staleness hazard is the same as in Streamlit: the main callback may read a fragment-owned
+  input. picoapp could detect this cheaply by recording `.value` reads during the main run (a
+  property hook). A change to such an input then forces a full run. That is automatic dependency
+  tracking in disguise, which is where the alternative model in `ai/alternative_reactive_model.md`
+  starts.
+
+**Observations.**
+
+- A fragment is the old nested `Reactive` level turned inside out. It still gives a partial re-run
+  scope, but layout is no longer tied to nesting, and the inputs stay stable because they are
+  hoisted.
+- Fragments are additive to the flat model. A later spec can add them without breaking the API.
+  They are a coarse-grained version of the per-output nodes in the alternative model.
+
 ### Use-case verdict
 
 | Framework | Columns per selector with params below | A/B keeps params | Boilerplate |
@@ -433,10 +492,16 @@ For picoapp's audience, (1) plus a cheap change signal fits best:
    *no* inputs. The UI must keep the last successful view (today it keeps the last outputs) or the
    user could get stuck without the input that would fix the error.
 2. **Latency.** With a full-view return, *showing* a newly revealed input (e.g. the submode's params)
-   waits for the whole callback, including heavy compute. Streamlit (fragments) and Shiny (separate
-   outputs) split this; picoapp's previous nesting did too. Options: accept it (simplest), or let
-   users split "view building" from "heavy compute" in a later iteration. Worth an explicit
-   decision.
+   waits for the whole callback. Whether there is anything to gain depends on whether the
+   revealing input itself affects an output: if it does, the output must be recomputed anyway (or
+   come from a user-side cache); if it doesn't, a user-side `lru_cache`/`has_changed` skip makes the
+   run fast anyway. Shiny avoids the issue structurally (per-output graph); Streamlit with
+   fragments (see the mapping below). picoapp's *current* nesting does **not** avoid the
+   recomputation: a `Nested` reply makes the child's inputs visible once the outer callback returns,
+   but the child's first job is dispatched right away (`reactive_view.rs`, `apply_result`), and
+   since the child inputs are fresh, the leaf outputs are always recomputed. It only shows the new
+   inputs earlier, by the duration of the leaf callback. Discussed further in
+   `ai/flat_view_model.md` and `ai/alternative_reactive_model.md`.
 3. **Coalescing semantics of `has_changed`** (see CACHE).
 4. **`Column` name collision** with the existing "input column" concept (see LAYOUT).
 5. **Input identity is a Python object, but options like `min`/`max`/`values` may change at
