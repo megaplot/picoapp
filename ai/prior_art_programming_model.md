@@ -357,8 +357,7 @@ state like drag/focus only; the value lives in Python).
   (`st.columns([1, 2])`, Gradio `scale=`), gaps, and alignment. That has been sufficient for the
   niche for years.
 - Naming: `Row`/`Column` (Streamlit, Gradio, Panel, Dash bootstrap, Compose, Flutter) is far more
-  common than `HStack`/`VStack` (SwiftUI, marimo). Since `Column` for "vertical stack" collides with
-  "input column" in picoapp's current vocabulary, the spec should settle this explicitly.
+  common than `HStack`/`VStack` (SwiftUI, marimo).
 - Immediate-mode layout limitations do *not* apply, since picoapp builds a full tree before layout.
 - gpui offers taffy 0.13: full flexbox (grow/shrink/basis/wrap/gap/align) and a *simplified* grid
   (N equal tracks with spans). A small backend-neutral vocabulary (`Row`, `Column`, a per-child
@@ -503,7 +502,8 @@ def callback() -> pa.View:
    inputs earlier, by the duration of the leaf callback. Discussed further in
    `ai/flat_view_model.md` and `ai/alternative_reactive_model.md`.
 3. **Coalescing semantics of `has_changed`** (see CACHE).
-4. **`Column` name collision** with the existing "input column" concept (see LAYOUT).
+4. ~~`Column` name collision~~ with an "input column" concept: a false alarm. The old API
+   never names columns; the term only came from the task description's prose.
 5. **Input identity is a Python object, but options like `min`/`max`/`values` may change at
    runtime**: Streamlit resets on bound changes; the simplest picoapp rule is "inputs are immutable
    except `value`; create a new input for a new range".

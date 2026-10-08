@@ -311,12 +311,11 @@ a separate deliverable.
 
 ## Layout
 
-Proposal for the first spec. It aims at reproducing today's look by default, without a sizing API.
+**Decision** (as proposed) for the first spec. It aims at reproducing today's look by default, without a sizing API.
 
 - **Vocabulary:** `pa.Row(*children)` and `pa.Column(*children)`. These are the most common names
-  in the prior art (Streamlit, Gradio, Panel, Flutter, Compose). The clash with today's "input
-  column" disappears together with the old API. A top-level `view` returning a bare element, or a
-  plain list, is treated as a `Column`.
+  in the prior art (Streamlit, Gradio, Panel, Flutter, Compose). A top-level `view` returning a
+  bare element, or a plain list, is treated as a `Column`.
 - **Automatic sizing via two element classes:**
   - *compact*: inputs, `Audio`. They have their natural size. Inside a `Row`, a child that contains
     only compact elements gets today's `SIDEBAR_WIDTH` (300px) and does not grow.
@@ -681,4 +680,5 @@ def foo(progress: pa.Progress) -> pa.Plot:
 5. ~~Fragments in the first spec?~~ Yes (see "Nodes returning view subtrees").
 6. ~~Memory policy for hidden nodes?~~ Python keeps results while the node is alive; Rust drops
    prepared forms of slots that leave the view (see "Memory policy for hidden nodes").
-7. Layout vocabulary and sizing for the first spec (see "Layout").
+7. ~~Layout vocabulary and sizing?~~ As proposed in "Layout": `Row`/`Column`, compact/fill
+   sizing, no sizing API yet.
