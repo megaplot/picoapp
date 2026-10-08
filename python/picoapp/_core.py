@@ -1,6 +1,11 @@
+from collections.abc import Callable
+
 from . import _picoapp
-from ._types_reactive import ReactiveBase
+from ._engine import Engine
+from ._memoize import memoize
+from ._types_element import Element
 
 
-def run(reactive: ReactiveBase) -> None:
-    _picoapp.run(reactive.inputs.inputs, reactive.__call__)
+def run(view: Callable[[], Element]) -> None:
+    """Opens the app window; `view` arranges inputs, outputs and nodes."""
+    _picoapp.run(Engine(memoize(view)))

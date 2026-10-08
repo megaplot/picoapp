@@ -3,9 +3,6 @@ use std::ops::Range;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use crate::inputs::Inputs;
-use crate::utils::Callback;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plot {
     pub xs: Vec<f64>,
@@ -44,16 +41,12 @@ pub struct Image {
     pub height: u32,
 }
 
+#[derive(Debug)]
 pub enum Output {
     Plot(Plot),
     MatrixPlot(MatrixPlot),
     Audio(Audio),
     Image(Image),
-}
-
-pub enum CallbackReturn {
-    Outputs(Vec<Output>),
-    Inputs(Inputs, Callback),
 }
 
 /// Formats a `PyErr`'s message and traceback for display in the UI.
@@ -74,45 +67,6 @@ pub fn format_traceback(py: Python<'_>, err: &PyErr) -> String {
     }
 }
 
-pub fn parse_callback_return(py: Python<'_>, cb_return: Py<PyAny>) -> PyResult<CallbackReturn> {
-    let cb_return = cb_return.bind(py);
-    if cb_return.get_type().name()? == "Outputs" {
-        return Ok(CallbackReturn::Outputs(parse_outputs(
-            py,
-            cb_return.getattr("outputs")?.into(),
-        )?));
-    } else {
-        // Approximate interface of 'Reactive' (duck typing style). In principle it would be
-        // nice to be able to use the equivalent of `instance(cb_return, ReactiveBase)`. The
-        // challenge is how to obtain the reference to the `ReactiveBase` type. Options:
-        // * Importing it from Python would add a weird reverse import direction.
-        // * Passing the type itself in from Python may look a bit weird as well, but
-        //   perhaps this is the way to go, especially since we could leverage that
-        //   pattern in other places as well (where we want nominal typing).
-        if cb_return.is_callable() && cb_return.hasattr("inputs")? {
-            let inputs = cb_return.getattr("inputs")?.getattr("inputs")?.extract()?;
-            let callback: Callback = cb_return.getattr("__call__")?.extract()?;
-            return Ok(CallbackReturn::Inputs(inputs, callback));
-        } else {
-            return Err(PyValueError::new_err(format!(
-                "Invalid callback return type: {:?}",
-                cb_return.get_type().name()?
-            )));
-        }
-    }
-}
-
-pub fn parse_outputs(py: Python<'_>, outputs: Py<PyAny>) -> PyResult<Vec<Output>> {
-    let output = outputs.bind(py);
-    let mut results = Vec::new();
-    for object in output.try_iter()? {
-        let object = object?;
-        let output = parse_output(&object)?;
-        results.push(output);
-    }
-    Ok(results)
-}
-
 /// Swizzles a flat RGBA byte buffer to BGRA, the pixel format gpui's
 /// `RenderImage` expects. Returns a new `Vec`.
 fn rgba_to_bgra(rgba: &[u8]) -> Vec<u8> {
@@ -123,7 +77,7 @@ fn rgba_to_bgra(rgba: &[u8]) -> Vec<u8> {
     out
 }
 
-fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
+pub fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
     // TODO: Decide if this should use a nominal type system, or rather structural
     // duck typing. Currently its a pretty bad mix...
     if object.hasattr("xs")?

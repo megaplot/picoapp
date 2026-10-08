@@ -2,23 +2,19 @@ import numpy as np
 
 import picoapp as pa
 
-inputs = pa.Inputs(
-    (slider_wavelen_signal := pa.IntSlider("Wave Length Signal", 8, 16, 64)),
-    (slider_repeat_signal := pa.IntSlider("Repeat Signal", 1, 8, 16)),
-    (slider_wavelen_filter := pa.IntSlider("Wave Length Filter", 8, 16, 64)),
-    (slider_repeat_filter := pa.IntSlider("Repeat Filter", 1, 2, 4)),
-    (radio_window := pa.Radio("Window", ["Box", "Hann", "Hamming"])),
-    (
-        radio_complex_mode := pa.Radio(
-            "Complex Mode",
-            ["complex", "real: cosine", "real: sine", "real: chained/convolved"],
-        )
-    ),
+slider_wavelen_signal = pa.IntSlider("Wave Length Signal", 8, 16, 64)
+slider_repeat_signal = pa.IntSlider("Repeat Signal", 1, 8, 16)
+slider_wavelen_filter = pa.IntSlider("Wave Length Filter", 8, 16, 64)
+slider_repeat_filter = pa.IntSlider("Repeat Filter", 1, 2, 4)
+radio_window = pa.Radio("Window", ["Box", "Hann", "Hamming"])
+radio_complex_mode = pa.Radio(
+    "Complex Mode",
+    ["complex", "real: cosine", "real: sine", "real: chained/convolved"],
 )
 
 
-def callback() -> pa.Outputs:
-
+@pa.memoize
+def plots() -> pa.Column:
     wavelen_signal = slider_wavelen_signal.value
     wavelen_filter = slider_wavelen_filter.value
     repeat_signal = slider_repeat_signal.value
@@ -57,7 +53,7 @@ def callback() -> pa.Outputs:
 
     n_max = max(len(signal), len(kernel))
 
-    return pa.Outputs(
+    return pa.Column(
         pa.Plot(
             xs=np.arange(n_max),
             ys=np.pad(np.real(kernel), (0, n_max - len(kernel))),
@@ -85,4 +81,18 @@ def callback() -> pa.Outputs:
     )
 
 
-pa.run(pa.Reactive(inputs, callback))
+def view() -> pa.Element:
+    return pa.Row(
+        pa.Column(
+            slider_wavelen_signal,
+            slider_repeat_signal,
+            slider_wavelen_filter,
+            slider_repeat_filter,
+            radio_window,
+            radio_complex_mode,
+        ),
+        plots,
+    )
+
+
+pa.run(view)

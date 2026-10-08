@@ -1,4 +1,5 @@
 mod app;
+mod app_view;
 mod audio;
 mod color_utils;
 mod header_bar;
@@ -7,8 +8,6 @@ mod inputs;
 mod line_plot;
 mod matrix_plot;
 mod plot_common;
-mod reactive_view;
-mod run_scheduler;
 mod style;
 mod ticks;
 

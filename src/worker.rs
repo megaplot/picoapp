@@ -1,110 +1,30 @@
-use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
+use futures::channel::mpsc::UnboundedSender;
 use pyo3::prelude::*;
 
-use crate::inputs::{InputBinding, InputSpec, InputValue, split_inputs};
-use crate::outputs::{CallbackReturn, format_traceback, parse_callback_return};
-use crate::utils::Callback;
+use crate::inputs::InputValue;
+use crate::outputs::format_traceback;
+use crate::view_tree::{InputId, NodeId, SlotContent, SlotResult, parse_slot_content};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LevelId(u64);
-
-impl LevelId {
-    /// Stable numeric id, usable as a gpui element id component.
-    pub fn index(self) -> usize {
-        self.0 as usize
-    }
-}
-
-struct Level {
-    bindings: Vec<InputBinding>,
-    callback: Callback,
+/// A UI input change, sent to the worker.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InputChange {
+    pub input: InputId,
+    pub value: InputValue,
 }
 
 /// What crosses from the worker to the UI: never carries a `Py` value.
-pub enum UiLevelResult {
-    Outputs(Vec<crate::outputs::Output>),
-    Nested {
-        level: LevelId,
-        specs: Vec<InputSpec>,
-    },
-    Error(String),
-    Discarded,
-}
-
-/// Owns every Python handle. Lives entirely on the worker thread.
-pub struct Registry {
-    next_id: u64,
-    levels: HashMap<LevelId, Level>,
-}
-
-impl Registry {
-    pub fn new() -> Self {
-        Registry {
-            next_id: 0,
-            levels: HashMap::new(),
-        }
-    }
-
-    pub fn register(&mut self, bindings: Vec<InputBinding>, callback: Callback) -> LevelId {
-        let id = LevelId(self.next_id);
-        self.next_id += 1;
-        self.levels.insert(id, Level { bindings, callback });
-        id
-    }
-
-    pub fn drop_level(&mut self, level: LevelId) {
-        self.levels.remove(&level);
-    }
-
-    /// Writes `values` into `level`'s bindings, calls its callback, and
-    /// parses the result. Returns `UiLevelResult::Discarded` if `level` isn't
-    /// registered (already dropped). On a nested `ReactiveBase` return,
-    /// registers the new level's bindings before returning, so the caller
-    /// only ever receives specs for it.
-    pub fn run_job(
-        &mut self,
-        py: Python<'_>,
-        level: LevelId,
-        values: &[InputValue],
-    ) -> UiLevelResult {
-        let Some(entry) = self.levels.get(&level) else {
-            return UiLevelResult::Discarded;
-        };
-
-        for (binding, value) in entry.bindings.iter().zip(values) {
-            if let Err(err) = binding.set_value(py, value) {
-                return UiLevelResult::Error(format_traceback(py, &err));
-            }
-        }
-
-        let result = entry
-            .callback
-            .call(py)
-            .and_then(|cb_return| parse_callback_return(py, cb_return));
-        match result {
-            Ok(CallbackReturn::Outputs(outputs)) => UiLevelResult::Outputs(outputs),
-            Ok(CallbackReturn::Inputs(inputs, callback)) => {
-                let (specs, bindings) = split_inputs(inputs);
-                let level = self.register(bindings, callback);
-                UiLevelResult::Nested { level, specs }
-            }
-            Err(err) => UiLevelResult::Error(format_traceback(py, &err)),
-        }
-    }
-}
-
-pub enum Job {
-    Run {
-        level: LevelId,
-        values: Vec<InputValue>,
-        reply: futures::channel::oneshot::Sender<UiLevelResult>,
-    },
-    Drop {
-        level: LevelId,
-    },
+#[derive(Debug)]
+pub enum WorkerMessage {
+    /// The visible slots that the following steps will update (the busy set).
+    /// Sent before every step, and once more (usually empty) at the end of a
+    /// round.
+    Stale(Vec<NodeId>),
+    Result(SlotResult),
+    /// The engine itself raised: a picoapp bug, not an error of a user node.
+    EngineError(String),
 }
 
 pub struct WorkerHandle {
@@ -113,18 +33,16 @@ pub struct WorkerHandle {
     // automatic field drop order, which only runs after `Drop::drop`
     // returns — too late, since the join inside it would block forever
     // waiting for a channel that hasn't closed yet.
-    sender: Option<mpsc::Sender<Job>>,
+    sender: Option<mpsc::Sender<InputChange>>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl WorkerHandle {
-    pub fn send(&self, job: Job) {
+    pub fn send(&self, change: InputChange) {
         // The receiving end only goes away when the worker thread itself
-        // panicked; in that case the Job is simply dropped, and any
-        // `oneshot::Sender` inside it drops too, which resolves the
-        // matching receiver to `Canceled` (see ui/reactive_view.rs).
+        // panicked; the change is then simply dropped.
         if let Some(sender) = &self.sender {
-            let _ = sender.send(job);
+            let _ = sender.send(change);
         }
     }
 }
@@ -140,72 +58,343 @@ impl Drop for WorkerHandle {
     }
 }
 
-/// Spawns the worker thread and registers the root level. Does not run any
-/// job synchronously: the caller dispatches the root's first job through
-/// the same channel as every later job (see `ReactiveView::new`), so every
-/// Python call — including the very first — runs on the dedicated worker
-/// thread, and the window can appear before that first call finishes.
-pub fn spawn(bindings: Vec<InputBinding>, callback: Callback) -> (WorkerHandle, LevelId) {
-    let mut registry = Registry::new();
-    let root = registry.register(bindings, callback);
-
-    let (sender, receiver) = mpsc::channel::<Job>();
+/// Spawns the worker thread, which owns `engine` (a `picoapp._engine.Engine`)
+/// and is the only thread that ever calls into Python. It starts the first
+/// round right away, without waiting for a UI change, so the window can
+/// appear before the first (possibly slow) evaluation finishes.
+pub fn spawn(engine: Py<PyAny>, to_ui: UnboundedSender<WorkerMessage>) -> WorkerHandle {
+    let (sender, receiver) = mpsc::channel::<InputChange>();
     let thread = std::thread::Builder::new()
         .name("picoapp-worker".to_string())
-        .spawn(move || worker_loop(registry, receiver))
+        .spawn(move || worker_loop(engine, receiver, to_ui))
         .expect("failed to spawn picoapp-worker thread");
 
-    (
-        WorkerHandle {
-            sender: Some(sender),
-            thread: Some(thread),
-        },
-        root,
-    )
+    WorkerHandle {
+        sender: Some(sender),
+        thread: Some(thread),
+    }
 }
 
-fn worker_loop(mut registry: Registry, receiver: mpsc::Receiver<Job>) {
-    while let Ok(job) = receiver.recv() {
-        match job {
-            Job::Run {
-                level,
-                values,
-                reply,
-            } => {
-                let result = Python::attach(|py| registry.run_job(py, level, &values));
-                // Ignore a failed send: it only means the UI dropped the
-                // receiver (view released while its job was in flight).
-                let _ = reply.send(result);
+fn worker_loop(
+    engine: Py<PyAny>,
+    receiver: mpsc::Receiver<InputChange>,
+    to_ui: UnboundedSender<WorkerMessage>,
+) {
+    // The first round starts without any change.
+    let mut changes = Vec::new();
+    loop {
+        run_round(&engine, &receiver, &to_ui, changes);
+        // Block until the next change. The channel closes when the UI drops
+        // its `WorkerHandle`.
+        let Ok(first) = receiver.recv() else {
+            break;
+        };
+        let Some(pending) = drain_pending(&receiver, vec![first]) else {
+            break;
+        };
+        changes = pending;
+    }
+    // Channel closed: drop the engine while attached so every Py handle is
+    // released correctly.
+    Python::attach(|_py| drop(engine));
+}
+
+/// Applies `changes`, then steps until no visible slot is stale. Changes that
+/// arrive in between are applied before the next step, which then picks the
+/// highest-priority stale slot of the new state (re-plan instead of finishing
+/// a stale plan).
+fn run_round(
+    engine: &Py<PyAny>,
+    receiver: &mpsc::Receiver<InputChange>,
+    to_ui: &UnboundedSender<WorkerMessage>,
+    mut changes: Vec<InputChange>,
+) {
+    loop {
+        let stale = Python::attach(|py| apply_changes(engine.bind(py), &changes));
+        let stale = match stale {
+            Ok(stale) => stale,
+            Err(message) => {
+                let _ = to_ui.unbounded_send(WorkerMessage::EngineError(message));
+                return;
             }
-            Job::Drop { level } => {
-                Python::attach(|_py| registry.drop_level(level));
+        };
+        let idle = stale.is_empty();
+        if to_ui.unbounded_send(WorkerMessage::Stale(stale)).is_err() || idle {
+            // Done, or the UI is gone.
+            return;
+        }
+
+        let result = Python::attach(|py| step(engine.bind(py)));
+        let message = match result {
+            Ok(Some(result)) => WorkerMessage::Result(result),
+            // Can't happen after a non-empty stale set; end the round rather
+            // than loop.
+            Ok(None) => return,
+            Err(message) => WorkerMessage::EngineError(message),
+        };
+        let failed = matches!(message, WorkerMessage::EngineError(_));
+        if to_ui.unbounded_send(message).is_err() || failed {
+            return;
+        }
+
+        // The UI dropped its handle (window closed): stop instead of
+        // evaluating the rest of the round for nobody.
+        let Some(pending) = drain_pending(receiver, Vec::new()) else {
+            return;
+        };
+        changes = pending;
+    }
+}
+
+/// Writes `changes` (if any) and returns the visible stale slots afterwards.
+fn apply_changes(
+    engine: &Bound<'_, PyAny>,
+    changes: &[InputChange],
+) -> Result<Vec<NodeId>, String> {
+    let call = || -> PyResult<Vec<NodeId>> {
+        if !changes.is_empty() {
+            let pairs: Vec<(u64, InputValue)> = changes
+                .iter()
+                .map(|change| (change.input.0, change.value))
+                .collect();
+            engine.call_method1("set_values", (pairs,))?;
+        }
+        let stale: Vec<u64> = engine.call_method0("stale_visible_slots")?.extract()?;
+        Ok(stale.into_iter().map(NodeId).collect())
+    };
+    call().map_err(|err| format_traceback(engine.py(), &err))
+}
+
+/// Runs one `Engine.step` and parses its result.
+fn step(engine: &Bound<'_, PyAny>) -> Result<Option<SlotResult>, String> {
+    let call = || -> PyResult<Option<SlotResult>> {
+        let result = engine.call_method0("step")?;
+        if result.is_none() {
+            return Ok(None);
+        }
+        let (node, _version, content): (u64, u64, Bound<'_, PyAny>) = result.extract()?;
+        let content = match parse_slot_content(&content) {
+            Ok(content) => content,
+            Err(err) => {
+                // The UI keeps showing the slot's previous content, so the
+                // engine must treat that one as shown, too.
+                engine.call_method1("reject", (node,))?;
+                SlotContent::Error(format_traceback(engine.py(), &err))
             }
+        };
+        Ok(Some(SlotResult {
+            node: NodeId(node),
+            content,
+        }))
+    };
+    call().map_err(|err| format_traceback(engine.py(), &err))
+}
+
+/// Collects all changes already queued behind `changes`, without blocking.
+/// Returns `None` once the UI has dropped its `WorkerHandle`.
+fn drain_pending(
+    receiver: &mpsc::Receiver<InputChange>,
+    mut changes: Vec<InputChange>,
+) -> Option<Vec<InputChange>> {
+    loop {
+        match receiver.try_recv() {
+            Ok(change) => changes.push(change),
+            Err(mpsc::TryRecvError::Empty) => return Some(coalesce(changes)),
+            Err(mpsc::TryRecvError::Disconnected) => return None,
         }
     }
-    // Channel closed: drop the registry while attached so every Py handle
-    // is released correctly.
-    Python::attach(|_py| drop(registry));
+}
+
+/// Keeps the latest value per input (latest value wins, no queue), in the
+/// order in which the inputs first changed.
+fn coalesce(changes: Vec<InputChange>) -> Vec<InputChange> {
+    let mut coalesced: Vec<InputChange> = Vec::new();
+    for change in changes {
+        match coalesced.iter_mut().find(|c| c.input == change.input) {
+            Some(existing) => existing.value = change.value,
+            None => coalesced.push(change),
+        }
+    }
+    coalesced
 }
 
 #[cfg(test)]
 mod tests {
+    use futures::channel::mpsc::unbounded;
+    use pyo3::types::PyDict;
+
     use super::*;
 
-    #[test]
-    fn run_job_returns_discarded_for_dropped_level() {
-        let mut registry = Registry::new();
-        // No easy way to build a real Callback/InputBinding without a live
-        // Python interpreter; instead, use a LevelId that was never
-        // registered, which is exactly the state a just-dropped level is in
-        // from run_job's point of view. `run_job`'s early-return branch
-        // doesn't touch Python at all when the level is absent, so this
-        // doesn't need a real callback either.
-        let level = LevelId(0);
+    fn change(input: u64, value: f64) -> InputChange {
+        InputChange {
+            input: InputId(input),
+            value: InputValue::F64(value),
+        }
+    }
+
+    /// Builds an engine stand-in from Python source defining `engine`.
+    fn python_engine(code: &std::ffi::CStr) -> Py<PyAny> {
         Python::initialize();
         Python::attach(|py| {
-            let result = registry.run_job(py, level, &[]);
-            assert!(matches!(result, UiLevelResult::Discarded));
+            let locals = PyDict::new(py);
+            py.run(code, None, Some(&locals)).unwrap();
+            locals.get_item("engine").unwrap().unwrap().unbind()
+        })
+    }
+
+    #[test]
+    fn coalesce_keeps_the_latest_value_per_input() {
+        let changes = vec![
+            change(1, 1.0),
+            change(2, 5.0),
+            change(1, 2.0),
+            change(1, 3.0),
+        ];
+        assert_eq!(coalesce(changes), vec![change(1, 3.0), change(2, 5.0)]);
+    }
+
+    #[test]
+    fn coalesce_keeps_distinct_inputs_in_first_change_order() {
+        let changes = vec![change(2, 1.0), change(1, 1.0)];
+        assert_eq!(coalesce(changes), vec![change(2, 1.0), change(1, 1.0)]);
+    }
+
+    #[test]
+    fn first_round_sends_stale_set_result_and_final_stale_set() {
+        let engine = python_engine(
+            c"
+class Engine:
+    def __init__(self):
+        self.pending = True
+    def set_values(self, changes):
+        raise AssertionError('the first round has no changes')
+    def stale_visible_slots(self):
+        return [7] if self.pending else []
+    def step(self):
+        self.pending = False
+        return (7, 1, 'boom')
+engine = Engine()
+",
+        );
+        let (to_ui, mut from_worker) = unbounded();
+        let worker = spawn(engine, to_ui);
+
+        // Keep the handle alive (a dropped handle ends the round early) until
+        // the round's three messages arrived.
+        let mut messages = Vec::new();
+        let start = std::time::Instant::now();
+        while messages.len() < 3 && start.elapsed() < std::time::Duration::from_secs(5) {
+            match from_worker.try_recv() {
+                Ok(message) => messages.push(format!("{message:?}")),
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(5)),
+            }
+        }
+        drop(worker);
+        assert_eq!(
+            messages,
+            vec![
+                "Stale([NodeId(7)])".to_string(),
+                "Result(SlotResult { node: NodeId(7), content: Error(\"boom\") })".to_string(),
+                "Stale([])".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn engine_exception_becomes_an_engine_error() {
+        let engine = python_engine(
+            c"
+class Engine:
+    def stale_visible_slots(self):
+        raise RuntimeError('engine bug')
+engine = Engine()
+",
+        );
+        let (to_ui, mut from_worker) = unbounded();
+        drop(spawn(engine, to_ui));
+
+        let message = from_worker.try_recv().unwrap();
+        assert!(
+            matches!(&message, WorkerMessage::EngineError(m) if m.contains("engine bug")),
+            "{message:?}"
+        );
+    }
+
+    #[test]
+    fn unparsable_content_is_rejected_and_sent_as_an_error() {
+        let engine = python_engine(
+            c"
+class Engine:
+    def __init__(self):
+        self.pending = True
+        self.rejected = []
+    def stale_visible_slots(self):
+        return [3] if self.pending else []
+    def step(self):
+        self.pending = False
+        return (3, 1, object())
+    def reject(self, node_id):
+        self.rejected.append(node_id)
+engine = Engine()
+",
+        );
+        let engine_for_check = Python::attach(|py| engine.clone_ref(py));
+        let (to_ui, mut from_worker) = unbounded();
+        drop(spawn(engine, to_ui));
+
+        let messages: Vec<WorkerMessage> =
+            std::iter::from_fn(|| from_worker.try_recv().ok()).collect();
+        assert!(
+            matches!(
+                &messages[1],
+                WorkerMessage::Result(SlotResult { node: NodeId(3), content: SlotContent::Error(m) })
+                    if m.contains("Invalid output type")
+            ),
+            "{messages:?}"
+        );
+        let rejected: Vec<u64> = Python::attach(|py| {
+            engine_for_check
+                .getattr(py, "rejected")
+                .unwrap()
+                .extract(py)
+                .unwrap()
         });
+        assert_eq!(rejected, vec![3]);
+    }
+
+    #[test]
+    fn round_stops_when_the_ui_drops_its_handle() {
+        let engine = python_engine(
+            c"
+class Engine:
+    def __init__(self):
+        self.steps = 0
+    def stale_visible_slots(self):
+        return [1] if self.steps < 50 else []
+    def step(self):
+        self.steps += 1
+        __import__('time').sleep(0.01)
+        return (1, self.steps, 'slow')
+engine = Engine()
+",
+        );
+        let engine_for_check = Python::attach(|py| engine.clone_ref(py));
+        // The UI's message receiver stays alive (as a gpui task's would), only
+        // the handle is dropped.
+        let (to_ui, _from_worker) = unbounded();
+        drop(spawn(engine, to_ui));
+
+        let steps: u64 = Python::attach(|py| {
+            engine_for_check
+                .getattr(py, "steps")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        });
+        assert!(
+            steps < 50,
+            "the round ran all {steps} steps after the handle was dropped"
+        );
     }
 
     /// Regression test for a deadlock: `WorkerHandle::drop` used to call
@@ -217,18 +406,19 @@ mod tests {
     /// a regression here fails this test instead of hanging the suite.
     #[test]
     fn dropping_the_last_worker_handle_does_not_hang() {
-        Python::initialize();
+        let engine = python_engine(
+            c"
+class Engine:
+    def stale_visible_slots(self):
+        return []
+engine = Engine()
+",
+        );
         let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let done_writer = done.clone();
         std::thread::spawn(move || {
-            let (worker, _root) = Python::attach(|py| {
-                let callback: Callback = py
-                    .eval(c"lambda: None", None, None)
-                    .unwrap()
-                    .extract()
-                    .unwrap();
-                spawn(vec![], callback)
-            });
+            let (to_ui, _from_worker) = unbounded();
+            let worker = spawn(engine, to_ui);
             drop(worker);
             done_writer.store(true, std::sync::atomic::Ordering::SeqCst);
         });

@@ -15,4 +15,15 @@ fi
 
 cd "$PROJECT_ROOT"
 
-mypy .
+args=(--exclude-gitignore)
+
+# numpy < 2.3 (the newest numpy for Python 3.10) types `np.ndarray` without
+# default type arguments, so `disallow_any_generics` rejects every bare
+# `np.ndarray`. Only in such a legacy environment, allow them.
+if python -c 'import sys, numpy; sys.exit(tuple(map(int, numpy.__version__.split(".")[:2])) >= (2, 3))'; then
+    echo "WARNING: numpy $(python -c 'import numpy; print(numpy.__version__)') < 2.3 (legacy environment, e.g. Python 3.10):" 1>&2
+    echo "WARNING: running mypy with --allow-any-generics, i.e. WITHOUT checking for missing generic type arguments." 1>&2
+    args+=(--allow-any-generics)
+fi
+
+mypy "${args[@]}" .

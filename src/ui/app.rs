@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use gpui_kit::component::{ActiveTheme, v_flex};
 use gpui_kit::{
     App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Point, Render, Styled,
@@ -8,12 +6,11 @@ use gpui_kit::{
 use log::info;
 use pyo3::prelude::*;
 
-use crate::inputs::{Inputs, split_inputs};
 use crate::logging_setup::setup_logging;
+use crate::ui::app_view::AppView;
 use crate::ui::header_bar::HeaderBar;
-use crate::ui::reactive_view::ReactiveView;
 use crate::ui::style::GUTTER;
-use crate::utils::Callback;
+use crate::view_tree::NodeId;
 use crate::worker::spawn;
 
 const APP_TITLE: &str = "pico app";
@@ -43,10 +40,10 @@ fn window_options() -> WindowOptions {
 }
 
 /// The window's content: a header bar (only if the compositor draws no
-/// decorations, see `HeaderBar`) above the root `ReactiveView`, on the
+/// decorations, see `HeaderBar`) above the `AppView`, on the
 /// dark theme's background with an 8px gutter around the content.
 struct AppShell {
-    content: Entity<ReactiveView>,
+    content: Entity<AppView>,
 }
 
 impl Render for AppShell {
@@ -66,14 +63,14 @@ impl Render for AppShell {
     }
 }
 
-pub fn run_ui(py: Python<'_>, inputs: Inputs, callback: Callback) -> PyResult<()> {
+pub fn run_ui(py: Python<'_>, engine: Py<PyAny>) -> PyResult<()> {
     setup_logging();
 
-    let (specs, bindings) = split_inputs(inputs);
-    let (worker, root_level) = spawn(bindings, callback);
-    info!("Worker spawned, opening window (root's first job dispatches asynchronously)");
+    let root = NodeId(engine.getattr(py, "root_id")?.extract(py)?);
+    let (to_ui, from_worker) = futures::channel::mpsc::unbounded();
+    let worker = spawn(engine, to_ui);
+    info!("Worker spawned, opening window (the first round runs asynchronously)");
 
-    let worker = Arc::new(worker);
     py.detach(move || {
         gpui_kit::application()
             // Icons (checkmarks, window controls) are embedded SVG assets.
@@ -85,8 +82,7 @@ pub fn run_ui(py: Python<'_>, inputs: Inputs, callback: Callback) -> PyResult<()
                 crate::ui::style::apply_dark_palette(cx);
                 open_window(window_options(), cx, move |window, cx| {
                     window.set_window_title(APP_TITLE);
-                    let content =
-                        cx.new(|cx| ReactiveView::new(root_level, specs, worker, window, cx));
+                    let content = cx.new(|cx| AppView::new(root, worker, from_worker, cx));
                     cx.new(|_| AppShell { content })
                 })
                 .expect("failed to open window");

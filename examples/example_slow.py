@@ -4,13 +4,14 @@ import numpy as np
 
 import picoapp as pa
 
-inputs = pa.Inputs(
-    (delay := pa.Slider("Callback delay (s)", 0.0, 1.0, 3.0)),
-    (raise_above := pa.Slider("Raise above", 0.0, 10.0, 11.0)),
-)
+delay = pa.Slider("Callback delay (s)", 0.0, 1.0, 3.0)
+raise_above = pa.Slider("Raise above", 0.0, 10.0, 11.0)
 
 
-def callback() -> pa.Outputs:
+# A failing run shows an error card above the plot's last good version, and
+# the sliders stay usable: `view` itself never calls this node.
+@pa.memoize
+def plot() -> pa.Plot:
     time.sleep(delay.value)
     if delay.value > raise_above.value:
         raise ValueError(
@@ -19,7 +20,11 @@ def callback() -> pa.Outputs:
 
     xs = np.linspace(-10.0, 10.0, 100)
     ys = np.sin(xs + delay.value)
-    return pa.Outputs(pa.Plot(xs, ys, y_limits=(-1.5, 1.5)))
+    return pa.Plot(xs, ys, y_limits=(-1.5, 1.5))
 
 
-pa.run(pa.Reactive(inputs, callback))
+def view() -> pa.Element:
+    return pa.Row(pa.Column(delay, raise_above), plot)
+
+
+pa.run(view)

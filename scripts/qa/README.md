@@ -27,7 +27,7 @@ scripts/qa/xvfb_start                         # Xvfb on :99
 uv pip install python-xlib pillow             # into ./venv (screenshot + input helpers)
 scripts/qa/run_example.sh python examples/example_1.py /tmp/shot.png 6     # start, screenshot, kill
 scripts/qa/session.sh example_1 /tmp/e1 "shot:0;click:30,335;wait:1;shot:checked;drag:167,100,260,100;shot:dragged"
-python scripts/qa/input.py click 30 335       # ad-hoc: click | drag | move | key
+python scripts/qa/input.py click 30 335       # ad-hoc: click | drag | move | scroll | key
 python scripts/qa/shot.py /tmp/shot.png       # ad-hoc screenshot of :99
 ```
 
@@ -41,7 +41,7 @@ Tips and pitfalls:
 - Coordinates are screen pixels; take a screenshot first and read positions off
   it. The app window starts at (0,0).
 - Count callback invocations from the log: `session.sh` runs Python unbuffered,
-  and the examples print in their callbacks (e.g. `example_nested_func`).
+  and the examples print in their nodes (e.g. `example_dynamic_inputs`).
 - Mesa prints an EGL/DRI3 warning on stderr under Xvfb. That is an Xvfb
   artifact (picoapp itself must print nothing).
 

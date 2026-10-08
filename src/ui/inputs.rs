@@ -19,7 +19,7 @@ pub fn make_slider_state(spec: &SliderSpec<f64>) -> SliderState {
     let mut state = SliderState::new()
         .min(spec.min as f32)
         .max(spec.max as f32)
-        .default_value(spec.init as f32)
+        .default_value(spec.value as f32)
         .step(step as f32);
     if spec.log {
         state = state.scale(SliderScale::Logarithmic);
@@ -31,7 +31,7 @@ pub fn make_int_slider_state(spec: &SliderSpec<i64>) -> SliderState {
     SliderState::new()
         .min(spec.min as f32)
         .max(spec.max as f32)
-        .default_value(spec.init as f32)
+        .default_value(spec.value as f32)
         .step(1.0)
 }
 
@@ -119,7 +119,7 @@ mod tests {
         let spec = crate::inputs::SliderSpec {
             name: "a".into(),
             min: -10.0,
-            init: 2.5,
+            value: 2.5,
             max: 10.0,
             log: false,
             decimal_places: Some(2),
@@ -142,7 +142,7 @@ mod tests {
         let spec = crate::inputs::SliderSpec {
             name: "a".into(),
             min: -10.0,
-            init: 0.5,
+            value: 0.5,
             max: 10.0,
             log: false,
             decimal_places: None,
@@ -158,7 +158,7 @@ mod tests {
         let spec = crate::inputs::SliderSpec {
             name: "a".into(),
             min: 0.0,
-            init: 0.0,
+            value: 0.0,
             max: 1.0,
             log: false,
             decimal_places: Some(2),

@@ -1,32 +1,37 @@
+use std::convert::Infallible;
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 mod checkbox;
 mod radio;
 mod slider;
-pub use checkbox::{Checkbox, CheckboxSpec, PyCheckbox};
-pub use radio::{PyRadio, Radio, RadioSpec};
-pub use slider::{PySlider, Slider, SliderSpec};
+pub use checkbox::CheckboxSpec;
+pub use radio::RadioSpec;
+pub use slider::SliderSpec;
 
-pub enum Input {
-    Slider(Slider<f64>),
-    IntSlider(Slider<i64>),
-    Checkbox(Checkbox),
-    Radio(Radio),
+/// Pure-Rust input description sent to the UI thread. Carries the input's
+/// current value, since a re-shown input's widget is re-created from it.
+#[derive(Debug, Clone)]
+pub enum InputSpec {
+    Slider(SliderSpec<f64>),
+    IntSlider(SliderSpec<i64>),
+    Checkbox(CheckboxSpec),
+    Radio(RadioSpec),
 }
 
-impl<'a, 'py> FromPyObject<'a, 'py> for Input {
+impl<'a, 'py> FromPyObject<'a, 'py> for InputSpec {
     type Error = PyErr;
 
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         if obj.get_type().name()? == "Slider" {
-            Ok(Input::Slider(obj.extract()?))
+            Ok(InputSpec::Slider(obj.extract()?))
         } else if obj.get_type().name()? == "IntSlider" {
-            Ok(Input::IntSlider(obj.extract()?))
+            Ok(InputSpec::IntSlider(obj.extract()?))
         } else if obj.get_type().name()? == "Checkbox" {
-            Ok(Input::Checkbox(obj.extract()?))
+            Ok(InputSpec::Checkbox(obj.extract()?))
         } else if obj.get_type().name()? == "Radio" {
-            Ok(Input::Radio(obj.extract()?))
+            Ok(InputSpec::Radio(obj.extract()?))
         } else {
             return Err(PyValueError::new_err(format!(
                 "Invalid input type: {:?}",
@@ -36,42 +41,20 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Input {
     }
 }
 
-pub type Inputs = Vec<Input>;
-
-/// Pure-Rust input description sent to the UI thread; the other half of an
-/// `Input` split by `Input::into_parts`/`split_inputs`.
-#[derive(Debug, Clone)]
-pub enum InputSpec {
-    Slider(SliderSpec<f64>),
-    IntSlider(SliderSpec<i64>),
-    Checkbox(CheckboxSpec),
-    Radio(RadioSpec),
-}
-
-/// Python handle kept on the worker thread, one per input, same order as
-/// its `InputSpec` sibling.
-pub enum InputBinding {
-    Slider(PySlider<f64>),
-    IntSlider(PySlider<i64>),
-    Checkbox(PyCheckbox),
-    Radio(PyRadio),
-}
-
-impl InputBinding {
-    pub fn set_value(&self, py: Python<'_>, value: &InputValue) -> PyResult<()> {
-        match (self, value) {
-            (InputBinding::Slider(b), InputValue::F64(v)) => b.set_value(py, *v),
-            (InputBinding::IntSlider(b), InputValue::I64(v)) => b.set_value(py, *v),
-            (InputBinding::Checkbox(b), InputValue::Bool(v)) => b.set_value(py, *v),
-            (InputBinding::Radio(b), InputValue::Index(v)) => b.set_to_index(py, *v),
-            _ => Err(PyValueError::new_err(
-                "InputValue does not match InputBinding variant",
-            )),
+impl InputSpec {
+    /// The input's current value, as the UI sends it back.
+    pub fn value(&self) -> InputValue {
+        match self {
+            InputSpec::Slider(s) => InputValue::F64(s.value),
+            InputSpec::IntSlider(s) => InputValue::I64(s.value),
+            InputSpec::Checkbox(s) => InputValue::Bool(s.value),
+            InputSpec::Radio(s) => InputValue::Index(s.index),
         }
     }
 }
 
-/// A value coming back from the UI, sent to the worker to write into `_value`.
+/// A value coming back from the UI, sent to the worker to write into the
+/// input (via `Engine.set_values`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputValue {
     F64(f64),
@@ -80,31 +63,17 @@ pub enum InputValue {
     Index(usize),
 }
 
-impl Input {
-    /// Splits into the `InputSpec` sent to the UI and the `InputBinding`
-    /// that stays on the worker thread.
-    pub fn into_parts(self) -> (InputSpec, InputBinding) {
-        match self {
-            Input::Slider(s) => {
-                let (spec, binding) = s.into_parts();
-                (InputSpec::Slider(spec), InputBinding::Slider(binding))
-            }
-            Input::IntSlider(s) => {
-                let (spec, binding) = s.into_parts();
-                (InputSpec::IntSlider(spec), InputBinding::IntSlider(binding))
-            }
-            Input::Checkbox(c) => {
-                let (spec, binding) = c.into_parts();
-                (InputSpec::Checkbox(spec), InputBinding::Checkbox(binding))
-            }
-            Input::Radio(r) => {
-                let (spec, binding) = r.into_parts();
-                (InputSpec::Radio(spec), InputBinding::Radio(binding))
-            }
-        }
-    }
-}
+impl<'py> IntoPyObject<'py> for InputValue {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = Infallible;
 
-pub fn split_inputs(inputs: Inputs) -> (Vec<InputSpec>, Vec<InputBinding>) {
-    inputs.into_iter().map(Input::into_parts).unzip()
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(match self {
+            InputValue::F64(v) => v.into_pyobject(py)?.into_any(),
+            InputValue::I64(v) => v.into_pyobject(py)?.into_any(),
+            InputValue::Bool(v) => v.into_pyobject(py)?.to_owned().into_any(),
+            InputValue::Index(v) => v.into_pyobject(py)?.into_any(),
+        })
+    }
 }

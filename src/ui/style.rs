@@ -18,6 +18,7 @@
 
 use std::rc::Rc;
 
+use gpui_kit::component::scroll::ScrollbarMode;
 use gpui_kit::component::{ActiveTheme, Theme, ThemeMode};
 use gpui_kit::{App, Div, Hsla, ParentElement, Pixels, Rgba, Styled, div, hsla, px};
 
@@ -50,6 +51,9 @@ pub fn apply_dark_palette(cx: &mut App) {
     colors.border = Some(BORDER.into());
     colors.input = Some(CONTROL_BORDER.into());
     theme.dark_theme = Rc::new(config);
+    // Scrollbars are the only hint that a column scrolls; the default mode
+    // hides them until the user happens to scroll.
+    theme.scrollbar_mode = ScrollbarMode::Always;
     Theme::change(ThemeMode::Dark, None, cx);
 }
 
