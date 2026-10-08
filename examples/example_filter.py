@@ -1,5 +1,3 @@
-from collections.abc import Callable
-
 import numpy as np
 
 import picoapp as pa
@@ -15,13 +13,11 @@ radio_complex_mode = pa.Radio(
 )
 
 
-# Each intermediate result is its own node: moving a signal slider re-runs
-# `signal` and what depends on it, but not `kernel`.
-
-
 @pa.memoize
-def kernel() -> np.ndarray:
+def plots() -> pa.Column:
+    wavelen_signal = slider_wavelen_signal.value
     wavelen_filter = slider_wavelen_filter.value
+    repeat_signal = slider_repeat_signal.value
     repeat_filter = slider_repeat_filter.value
 
     phases = 2 * np.pi * np.arange(wavelen_filter * repeat_filter) / wavelen_filter
@@ -43,60 +39,46 @@ def kernel() -> np.ndarray:
     if window is not None:
         kernel *= window
 
-    return kernel
-
-
-@pa.memoize
-def signal() -> np.ndarray:
-    wavelen_signal = slider_wavelen_signal.value
-    repeat_signal = slider_repeat_signal.value
-    return np.concatenate(
+    signal = np.concatenate(
         [
-            np.zeros(len(kernel())),
+            np.zeros(len(kernel)),
             np.sin(
                 2 * np.pi * np.arange(wavelen_signal * repeat_signal) / wavelen_signal
             ),
-            np.zeros(len(kernel())),
+            np.zeros(len(kernel)),
         ]
     )
 
+    signal_convolved = np.convolve(signal, kernel, mode="same")
 
-@pa.memoize
-def signal_convolved() -> np.ndarray:
-    return np.convolve(signal(), kernel(), mode="same")
+    n_max = max(len(signal), len(kernel))
 
-
-def kernel_plot(part: Callable[[np.ndarray], np.ndarray]) -> pa.Memoized[pa.Plot]:
-    def plot() -> pa.Plot:
-        n_max = max(len(signal()), len(kernel()))
-        return pa.Plot(
+    return pa.Column(
+        pa.Plot(
             xs=np.arange(n_max),
-            ys=np.pad(part(kernel()), (0, n_max - len(kernel()))),
-        )
-
-    return pa.memoize(plot)
-
-
-def convolved_plot(
-    part: Callable[[np.ndarray], np.ndarray],
-) -> pa.Memoized[pa.Plot]:
-    def plot() -> pa.Plot:
-        return pa.Plot(
-            xs=np.arange(len(signal_convolved())),
-            ys=part(signal_convolved()),
-        )
-
-    return pa.memoize(plot)
-
-
-plots = [
-    kernel_plot(np.real),
-    kernel_plot(np.imag),
-    pa.memoize(lambda: pa.Plot(xs=np.arange(len(signal())), ys=signal())),
-    convolved_plot(np.real),
-    convolved_plot(np.imag),
-    convolved_plot(np.abs),
-]
+            ys=np.pad(np.real(kernel), (0, n_max - len(kernel))),
+        ),
+        pa.Plot(
+            xs=np.arange(n_max),
+            ys=np.pad(np.imag(kernel), (0, n_max - len(kernel))),
+        ),
+        pa.Plot(
+            xs=np.arange(len(signal)),
+            ys=signal,
+        ),
+        pa.Plot(
+            xs=np.arange(len(signal_convolved)),
+            ys=np.real(signal_convolved),
+        ),
+        pa.Plot(
+            xs=np.arange(len(signal_convolved)),
+            ys=np.imag(signal_convolved),
+        ),
+        pa.Plot(
+            xs=np.arange(len(signal_convolved)),
+            ys=np.abs(signal_convolved),
+        ),
+    )
 
 
 def view() -> pa.Element:
@@ -109,7 +91,7 @@ def view() -> pa.Element:
             radio_window,
             radio_complex_mode,
         ),
-        pa.Column(*plots),
+        plots,
     )
 
 

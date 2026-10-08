@@ -1,8 +1,12 @@
 """Pick a dataset and a clustering algorithm, each with its own parameters.
 
 Each selector sits on top of its parameter column. Switching a selector back
-and forth keeps every parameter's value, and moving an algorithm parameter
-re-runs only the clustering, not the dataset.
+and forth keeps every parameter's value.
+
+The dataset and the clustering are separate `pa.memoize` nodes, so moving an
+algorithm parameter re-runs only the clustering, not the dataset. That split
+is an optimization: a single node computing both works just as well, it only
+re-runs more.
 """
 
 import numpy as np

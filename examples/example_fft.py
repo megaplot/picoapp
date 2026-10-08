@@ -17,7 +17,7 @@ radio_complex_mode = pa.Radio(
 
 
 @pa.memoize
-def kernel() -> np.ndarray:
+def plots() -> pa.Column:
     print(f"{slider_freq.value=} {slider_kernel_size.value=} {radio_window.value=}")
 
     freq = slider_freq.value
@@ -47,27 +47,22 @@ def kernel() -> np.ndarray:
     if window is not None:
         kernel *= window
 
-    return kernel
-
-
-@pa.memoize
-def plots() -> pa.Column:
     # When using `np.fft.fft` with an implicit length that is larger then the signal
     # itself, it gets zero padded, leading to an increased spectral resolution.
     n_block = _SAMPLE_RATE
 
     return pa.Column(
         pa.Plot(
-            xs=np.arange(len(kernel())),
-            ys=np.real(kernel()),
+            xs=np.arange(n_kernel),
+            ys=np.real(kernel),
         ),
         pa.Plot(
-            xs=np.arange(len(kernel())),
-            ys=np.imag(kernel()),
+            xs=np.arange(n_kernel),
+            ys=np.imag(kernel),
         ),
         pa.Plot(
             xs=np.arange(n_block) / n_block * 2 * _SAMPLE_RATE,
-            ys=np.abs(np.fft.fft(kernel(), n=n_block)),
+            ys=np.abs(np.fft.fft(kernel, n=n_block)),
         ),
     )
 
