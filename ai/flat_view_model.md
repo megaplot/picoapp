@@ -12,8 +12,12 @@ returns a full view, built from hoisted inputs and outputs. Prior art lives in
   (but see the open question below); identity-based reuse of prepared outputs; port all examples;
   **remove the old `Inputs`/`Outputs`/`Reactive`/`ReactiveBase` API** (no compatibility adapter).
   Deferred to follow-up specs: input writes/presets with a re-run cap, `Button`, `Tabs`, fragments.
-- **Status: paused.** Before writing the spec, the alternative reactive model is being explored as
-  a competing direction.
+- **Status: paused, likely superseded.** The alternative reactive model
+  (`ai/alternative_reactive_model.md`) contains this model as a special case: a `view` that builds
+  all outputs inline. The current direction is to ship that model with `@pa.computed` nodes, see
+  its "Decision: go straight for level 1". The scope items above carry over, except `has_changed`
+  (replaced by tracking and handlers) and identity-based output reuse (replaced by per-node
+  versions). The analysis in this file stays as the rationale.
 
 ## Latency of revealed inputs
 
