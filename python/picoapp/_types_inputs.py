@@ -110,9 +110,9 @@ class Radio(Generic[T]):
         return self._value
 
 
-Input = Slider | IntSlider | Checkbox | Radio
+Input = Slider | IntSlider | Checkbox | Radio[T]
 
 
 class Inputs:
-    def __init__(self, *inputs: Input):
+    def __init__(self, *inputs: Input[T]):
         self.inputs = inputs
