@@ -14,20 +14,6 @@ Each entry: where, what, why it can wait, when it was noted.
 - **Why deferred**: purely cosmetic, and converting risks a rounding-induced color shift no one asked for. Fix by hand-converting to an equivalent `hsla(...)` call and eyeballing the plot afterward.
 - **Noted**: 2026-09-25, gpui migration review.
 
-## Worker shutdown isn't provably joined before `pa.run()` returns
-
-- **Where**: `src/ui/reactive_view.rs` (`dispatch`'s detached reply task holds an `Arc<WorkerHandle>`), `src/worker.rs` (`WorkerHandle::drop`).
-- **What**: if gpui doesn't drop all pending `cx.spawn` tasks before its `run()` call returns, a detached task still holding the `Arc<WorkerHandle>` could keep the worker thread (and an in-flight Python callback) alive after `pa.run()` has returned to the caller.
-- **Why deferred**: unconfirmed whether this is reachable in practice — needs a manual check (close the window while a slow callback is running, see if the process/thread actually exits) rather than a speculative code change.
-- **Noted**: 2026-09-25, gpui migration review.
-
-## No automated test for `Nested` actually registering a runnable level
-
-- **Where**: `src/worker.rs` tests, `_run_worker_job` (`src/py_module.rs`).
-- **What**: `test_worker_job_returns_nested` (Python-side) only checks the `"Nested(1)"` return string; nothing then dispatches a job *against* the newly registered level to confirm its bindings actually work. `_run_worker_job` is a one-shot hook (throwaway `Registry` per call), so there's no way to reach the new level from Python today.
-- **Why deferred**: would need a second test hook (e.g. one that keeps the `Registry` alive across two calls) — real but non-trivial scope for a review follow-up.
-- **Noted**: 2026-09-25, gpui migration review.
-
 ## A Rust panic prints to stderr, unlike everything else
 
 - **Where**: no single file — this is Rust's default panic hook, not anything picoapp installs.
