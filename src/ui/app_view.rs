@@ -31,7 +31,7 @@ use crate::worker::{InputChange, WorkerHandle, WorkerMessage};
 /// flicker.
 const BUSY_DELAY: Duration = Duration::from_millis(150);
 
-/// Minimum height of a fill element (plot, image) inside a column.
+/// Minimum height of a fill output (plot, image).
 const MIN_FILL_HEIGHT: f32 = 120.;
 
 enum InputWidgetState {
@@ -92,10 +92,27 @@ struct SlotState {
 enum Placement {
     /// The root slot: the whole window content.
     Root,
-    /// A slot's content: fills the slot.
-    SlotContent,
+    /// A slot's content: fills the slot. `bounded` is the slot's
+    /// `Placement::height_bounded`.
+    SlotContent {
+        bounded: bool,
+    },
     Row,
     Column,
+}
+
+impl Placement {
+    /// Whether the parent sets the element's height (the window, or a row
+    /// stretching its children). A column placed like this scrolls when its
+    /// content is taller; a column inside a column takes its content's height
+    /// instead, so the outer column scrolls.
+    fn height_bounded(self) -> bool {
+        match self {
+            Placement::Root | Placement::Row => true,
+            Placement::SlotContent { bounded } => bounded,
+            Placement::Column => false,
+        }
+    }
 }
 
 /// The app's single view: renders the slot tree from the root slot.
@@ -331,10 +348,12 @@ impl AppView {
             .error
             .as_ref()
             .map(|msg| error_card(msg.clone(), cx).flex_shrink_0());
-        let content = slot
-            .content
-            .as_ref()
-            .map(|tree| self.render_tree(tree, Placement::SlotContent, &format!("{}", node.0), cx));
+        let content = slot.content.as_ref().map(|tree| {
+            let content_placement = Placement::SlotContent {
+                bounded: placement.height_bounded(),
+            };
+            self.render_tree(tree, content_placement, &format!("{}", node.0), cx)
+        });
         sized(div().flex().flex_col().gap(GUTTER), fill, placement)
             .when(busy, |el| el.opacity(0.5))
             .children(error_block)
@@ -373,15 +392,13 @@ impl AppView {
                     .collect();
                 let column =
                     sized(div().flex().flex_col().gap(GUTTER), fill, placement).children(children);
-                if fill {
-                    column.into_any_element()
-                } else {
-                    // A column of compact elements (e.g. inputs) scrolls when
-                    // it overflows, like a sidebar.
+                if placement.height_bounded() {
                     column
                         .id(SharedString::from(format!("column-{path}")))
                         .overflow_y_scroll()
                         .into_any_element()
+                } else {
+                    column.into_any_element()
                 }
             }
             Tree::Input { id, .. } => match self.widgets.get(id) {
@@ -391,7 +408,13 @@ impl AppView {
                 None => div().into_any_element(),
             },
             Tree::Output(output) => {
-                sized(render_output(output, cx), fill, placement).into_any_element()
+                let output = render_output(output, cx);
+                let output = if fill {
+                    output.min_h(px(MIN_FILL_HEIGHT))
+                } else {
+                    output
+                };
+                sized(output, fill, placement).into_any_element()
             }
             Tree::Slot(node) => self.render_slot(*node, placement, cx),
         }
@@ -487,15 +510,18 @@ impl Render for AppView {
 /// Applies the size an element gets from its placement.
 ///
 /// In a `Row`, a compact child gets the sidebar width and fill children
-/// share the rest; in a `Column`, fill children share the height (with a
-/// minimum) and compact children keep their natural height.
+/// share the rest; in a `Column`, fill children share the height and compact
+/// children keep their natural height. A fill child never shrinks below its
+/// content's minimum (`MIN_FILL_HEIGHT` per plot or image), so a column that
+/// can't fit them overflows and scrolls (see `Placement::height_bounded`).
 fn sized(el: Div, fill: bool, placement: Placement) -> Div {
     match (placement, fill) {
         (Placement::Root, _) => el.size_full(),
-        (Placement::SlotContent, _) => el.flex_1().min_w_0().min_h_0(),
+        (Placement::SlotContent { bounded: true }, _) => el.flex_1().min_w_0().min_h_0(),
+        (Placement::SlotContent { bounded: false }, _) => el.flex_1().min_w_0(),
         (Placement::Row, true) => el.flex_1().min_w_0(),
         (Placement::Row, false) => el.w(SIDEBAR_WIDTH).flex_shrink_0(),
-        (Placement::Column, true) => el.flex_1().min_h(px(MIN_FILL_HEIGHT)),
+        (Placement::Column, true) => el.flex_1(),
         (Placement::Column, false) => el.flex_shrink_0(),
     }
 }

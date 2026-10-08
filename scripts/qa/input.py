@@ -1,9 +1,10 @@
-"""Drive an X display (default :99) through XTEST: pointer moves, clicks, drags, keys.
+"""Drive an X display (default :99) through XTEST: pointer moves, clicks, drags, wheel, keys.
 
 usage:
   input.py click X Y
   input.py drag X1 Y1 X2 Y2 [STEPS]
   input.py move X Y
+  input.py scroll X Y CLICKS     (mouse wheel; positive scrolls down)
   input.py key KEYSYM            (e.g. Return, space, a)
 Set DISPLAY_NAME to override the display.
 """
@@ -46,6 +47,18 @@ def drag(x1: int, y1: int, x2: int, y2: int, steps: int = 12) -> None:
     button(False)
 
 
+def scroll(x: int, y: int, clicks: int) -> None:
+    """Mouse wheel at (x, y): positive `clicks` scroll down, negative up."""
+    move(x, y)
+    time.sleep(0.05)
+    wheel_button = 5 if clicks > 0 else 4
+    for _ in range(abs(clicks)):
+        xtest.fake_input(D, X.ButtonPress, wheel_button)
+        xtest.fake_input(D, X.ButtonRelease, wheel_button)
+        D.sync()
+        time.sleep(0.03)
+
+
 def key(name: str) -> None:
     code = D.keysym_to_keycode(XK.string_to_keysym(name))
     xtest.fake_input(D, X.KeyPress, code)
@@ -61,5 +74,7 @@ if __name__ == "__main__":
         move(int(args[0]), int(args[1]))
     elif cmd == "drag":
         drag(*(int(a) for a in args[:4]), *(int(a) for a in args[4:5]))
+    elif cmd == "scroll":
+        scroll(int(args[0]), int(args[1]), int(args[2]))
     elif cmd == "key":
         key(args[0])

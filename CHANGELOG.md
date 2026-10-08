@@ -5,6 +5,7 @@
 - Replaced the `Inputs`/`Outputs`/`Reactive` API by a `view` function that arranges inputs and outputs in `pa.Row`/`pa.Column` layouts (breaking)
 - Added `@pa.memoize` nodes with automatic dependency tracking: an input change re-runs only the nodes that read it, and each node updates its own part of the window
 - Inputs keep their values while hidden, e.g. when switching between modes with different parameters
+- Columns that don't fit the window scroll, including columns of plots, which were cut off before
 
 ## 0.3.1
 
