@@ -30,6 +30,9 @@ features = ["pyo3/extension-module"]
 
 [tool.ruff]
 line-length = 88
+# ruff also formats Python blocks inside Markdown; the ones in `ai/` and `docs/`
+# are design sketches (`...` bodies, aligned comments), not code to format.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint.isort]
 # picoapp isn't always installed editable when ruff runs (e.g. a bare `ruff
