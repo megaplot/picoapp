@@ -309,6 +309,52 @@ recomputation. Manual caching also fits this API badly:
 `@pa.computed` makes this unnecessary. Level 0 stays as a style (inline outputs in `view`), not as
 a separate deliverable.
 
+## Naming of `computed` / `Computed[T]`
+
+Open: the working name `computed` reads like "compute this now", while the point is a value that
+is kept up to date and *not* recomputed unless needed.
+
+**Where "computed" comes from.** It is the standard term in the signals family: Knockout
+`ko.computed`, Vue `computed()`, MobX `computed`, Preact/Angular signals `computed()`, and the TC39
+signals proposal `Signal.Computed`. There it means "a derived value, lazily evaluated, cached, with
+dependencies tracked automatically", i.e. exactly these semantics. The same concept elsewhere:
+
+| Framework | Name |
+|---|---|
+| Svelte 5 | `$derived` |
+| Jotai | derived atoms |
+| Solid | `createMemo` |
+| React | `useMemo` (with manual deps) |
+| Shiny | `reactive.calc` |
+| marimo | a cell |
+
+The candidates:
+
+| Name | Pros | Cons |
+|---|---|---|
+| `computed` / `Computed[T]` | The established term for exactly these semantics (Vue, MobX, signals, TC39). Familiar to web developers. | Reads as "computes now". Unknown to most scientific Python users, the target audience. Says nothing about caching or reactivity. |
+| `derived` / `Derived[T]` | Describes the relationship: a value derived from inputs (and other derived values), kept consistent with them. It implies neither "compute now" nor "cache forever". Reads well for every result kind: `@pa.derived def dataset()`, `def clustering()`, `def sound_panel()`. Svelte 5 uses it for the same concept. Pairs naturally with "inputs" in docs: "inputs and derived values". | Less well known than `computed`. Doesn't explicitly say "cached". |
+| `memo` / `memoized` | Says what matters to the user (not recomputing). Python users know "memoization". Solid (`createMemo`) and React (`useMemo`) use it. | Memoization in Python means "keyed by arguments" (`functools`). Here there are no arguments and the keys are the tracked reads, so the analogy is half-right. Says nothing about automatic re-evaluation. |
+| `cached` | Short and clear about the caching. | A false friend of `functools.cache`: there, a zero-argument function is cached *forever*. That is the exact pitfall from "Decision: go straight for level 1". Users would expect `functools` semantics. **Avoid.** |
+| `reactive` | Says "reacts to changes" (Shiny's `reactive.calc`). | Too broad: inputs and the view are reactive too. It collides with the removed `pa.Reactive`, which meant something different, so migrating users would be confused. **Avoid.** |
+| `node` / `Node[T]` | Explicitly names the graph model. | Implementation-centric and generic: inputs are graph nodes too. Says nothing about what the object does. Fine in internal docs, weak as user API. |
+| `fragment` | Streamlit precedent. | Only fits nodes whose result is a layout. `dataset` (a value) or `clustering` (a single plot) are not fragments in Streamlit's sense. Works as a *docs term* for "a derived value that is a view subtree", not as the general name. |
+| `component` | Familiar from React/Solara/Vue. | A component there is a reusable UI building block *with props*, instantiated many times. These nodes take no arguments, are single objects, and can be non-UI values. Strong wrong expectations. **Avoid.** |
+| `widget` / `group` | – | UI-only connotation. "Widget" means input controls. "Group" suggests layout, which `Row`/`Column` already cover. **Avoid.** |
+
+Other candidates considered:
+
+- `calc` (Shiny): short, but suggests imperative calculation, the same problem as `computed`.
+- `lazy`: describes only the evaluation strategy.
+- `formula`/`cell` (spreadsheets, marimo): an evocative analogy, but `cell` collides with
+  notebook cells.
+
+**Recommendation: `derived` / `Derived[T]`.** It names the relationship the user has to understand
+("this value is derived from those inputs and stays consistent with them"). It also avoids both
+misreadings ("computes now", and `functools`-style "cached forever"). "Fragment" stays as a docs
+term for a derived value whose result is a view subtree. The second choice is `memo`, if the
+emphasis should be on "not recomputing".
+
 ## Layout
 
 **Decision** (as proposed) for the first spec. It aims at reproducing today's look by default, without a sizing API.
@@ -682,3 +728,4 @@ def foo(progress: pa.Progress) -> pa.Plot:
    prepared forms of slots that leave the view (see "Memory policy for hidden nodes").
 7. ~~Layout vocabulary and sizing?~~ As proposed in "Layout": `Row`/`Column`, compact/fill
    sizing, no sizing API yet.
+8. Naming of `computed`/`Computed[T]` (see "Naming"; recommendation `derived`/`Derived[T]`).

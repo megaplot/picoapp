@@ -303,9 +303,8 @@ numpy-only algorithms, so it needs no new dependencies. Every existing example i
 
 ## Release
 
-User-facing breaking change: a `CHANGELOG.md` entry and a `Cargo.toml` version bump. The bump
-size (0.4.0 vs. 1.0.0) is to be decided by the human before merging; see the open question in the
-hand-off message.
+User-facing breaking change: bump `Cargo.toml` to **0.4.0** (decided: pre-1.0, breaking changes
+bump the minor version) with a new `## 0.4.0` `CHANGELOG.md` heading.
 
 ## Risks
 
