@@ -1,4 +1,7 @@
 from ._core import run as run
+from ._memoize import CycleError as CycleError
+from ._memoize import Memoized as Memoized
+from ._memoize import memoize as memoize
 from ._types_element import Element as Element
 from ._types_inputs import Checkbox as Checkbox
 from ._types_inputs import Input as Input
@@ -7,6 +10,10 @@ from ._types_inputs import Inputs as Inputs
 from ._types_inputs import IntSlider as IntSlider
 from ._types_inputs import Radio as Radio
 from ._types_inputs import Slider as Slider
+from ._types_layout import Column as Column
+from ._types_layout import ElementLike as ElementLike
+from ._types_layout import Layout as Layout
+from ._types_layout import Row as Row
 from ._types_outputs import Audio as Audio
 from ._types_outputs import Image as Image
 from ._types_outputs import MatrixPlot as MatrixPlot
