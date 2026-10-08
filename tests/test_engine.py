@@ -67,6 +67,25 @@ def test_step_priority_is_root_then_fragments_then_leaves() -> None:
     assert order == [root._id, fragment._id, leaf_a._id, leaf_b._id]
 
 
+def test_failed_fragment_keeps_its_priority() -> None:
+    x = pa.IntSlider("x", 0, 0, 10)
+
+    def fragment_fn() -> pa.Column:
+        if x.value == 1:
+            raise ValueError("failing")
+        return pa.Column(pa.Plot([0.0], [float(x.value)]))
+
+    leaf = pa.memoize(lambda: pa.Plot([0.0], [float(x.value)]))
+    fragment = pa.memoize(fragment_fn)
+    engine = make_engine(pa.memoize(lambda: pa.Row(x, leaf, fragment)))
+
+    engine.set_values([(x._id, 1)])
+    drain(engine)
+    engine.set_values([(x._id, 2)])
+    order = [result.node_id for result in drain(engine)]
+    assert order == [fragment._id, leaf._id]
+
+
 def test_unchanged_slots_are_not_resent() -> None:
     x = pa.Slider("x", 0.0, 1.0, 2.0)
     y = pa.Slider("y", 0.0, 1.0, 2.0)

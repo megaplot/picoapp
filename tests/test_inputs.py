@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 import picoapp as pa
@@ -39,6 +40,21 @@ def test_radio_value_is_written_by_index() -> None:
     radio._write_ui_value(2)
     assert radio.value == "c"
     assert radio._index == 2
+
+
+def test_radio_keeps_the_selected_index_of_equal_values() -> None:
+    radio = pa.Radio("r", [1, 1.0, True])
+    radio._write_ui_value(2)
+    assert radio._index == 2
+
+
+def test_radio_accepts_values_without_a_boolean_comparison() -> None:
+    first, second = np.zeros(3), np.ones(3)
+    radio = pa.Radio("r", [first, second])
+    radio._write_ui_value(1)
+    assert (radio.value is second, radio._index, radio._version) == (True, 1, 1)
+    radio._write_ui_value(1)
+    assert radio._version == 1
 
 
 def test_radio_init_selects_the_index() -> None:

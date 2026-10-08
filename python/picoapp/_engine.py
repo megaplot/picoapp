@@ -118,13 +118,21 @@ class Engine:
         return waiting is not None and self._shown.get(waiting[0]) is not waiting[1]
 
     def _next_slot(self) -> Memoized[object] | None:
-        """Priority: the root, then fragments, then leaves, each in tree order."""
+        """Priority: the root, then fragments, then leaves, each in tree order.
+
+        A fragment is a slot whose latest value or shown content is a layout,
+        so a fragment keeps its priority while it shows an error.
+        """
         pending = [node for node in self._visible().slots if self._needs_step(node)]
         for node in pending:
             if node is self._root:
                 return node
         for node in pending:
-            if not node._evaluated or isinstance(node._value, Layout):
+            if (
+                not node._evaluated
+                or isinstance(node._value, Layout)
+                or isinstance(self._shown.get(node._id), Layout)
+            ):
                 return node
         return pending[0] if pending else None
 

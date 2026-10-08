@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import weakref
 from collections.abc import Sequence
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from . import _tracking
 from ._types_element import Element
@@ -42,9 +42,12 @@ class Input(InputBase, Generic[T_co]):
     def _write_ui_value(self, raw: object) -> None:
         value = self._decode(raw)
         if value != self._value:
-            self._value = value
-            self._version += 1
-            _tracking.bump_epoch()
+            self._set_value(value)
+
+    def _set_value(self, value: T_co) -> None:  # type: ignore[misc]
+        self._value = value
+        self._version += 1
+        _tracking.bump_epoch()
 
     def _decode(self, raw: object) -> T_co:
         """Converts the UI's raw value (float, int, bool or index) to `T_co`."""
@@ -144,8 +147,12 @@ class Radio(Input[T]):
         self._index = index
 
     def _write_ui_value(self, raw: object) -> None:
-        super()._write_ui_value(raw)
-        self._index = self._values.index(self._value)
+        # Compares indices, not values: values may compare equal (`1`, `1.0`,
+        # `True`), or compare without a bool result (numpy arrays).
+        value = self._decode(raw)
+        if raw != self._index:
+            self._index = cast(int, raw)
+            self._set_value(value)
 
     def _decode(self, raw: object) -> T:
         if not isinstance(raw, int):
