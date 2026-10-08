@@ -194,6 +194,20 @@ multi-output node is unpacking in `view`, which is the inefficient option 1 abov
   slots showing the same node are harmless. The simplest first rule is to reject duplicates with a
   clear error.
 
+### Memory policy for hidden nodes
+
+**Decision.**
+
+- **Python side:** a node keeps its last result for as long as the node object is alive, whether
+  it is visible or not. Switching back to a branch is therefore instant (no Python compute). Users
+  control memory through what they hoist: a node that is no longer referenced is garbage
+  collected, together with its result.
+- **Rust side:** prepared forms (`PreparedOutput`: an uploaded `RenderImage`, an `AudioPlayer`
+  entity, plot data) are dropped when their slot leaves the view. They are rebuilt from the cached
+  Python result when the slot reappears. GPU and native memory thus follow what is visible, and a
+  re-shown slot costs a re-upload but no compute.
+- **Accepted consequence:** a hidden and re-shown `Audio` restarts playback.
+
 ### Diamond dependencies and glitches
 
 The setup: `B` and `C` both read input `A`, and `D` reads `B` and `C`. In a *push*-based system
@@ -294,6 +308,31 @@ recomputation. Manual caching also fits this API badly:
 
 `@pa.computed` makes this unnecessary. Level 0 stays as a style (inline outputs in `view`), not as
 a separate deliverable.
+
+## Layout
+
+Proposal for the first spec. It aims at reproducing today's look by default, without a sizing API.
+
+- **Vocabulary:** `pa.Row(*children)` and `pa.Column(*children)`. These are the most common names
+  in the prior art (Streamlit, Gradio, Panel, Flutter, Compose). The clash with today's "input
+  column" disappears together with the old API. A top-level `view` returning a bare element, or a
+  plain list, is treated as a `Column`.
+- **Automatic sizing via two element classes:**
+  - *compact*: inputs, `Audio`. They have their natural size. Inside a `Row`, a child that contains
+    only compact elements gets today's `SIDEBAR_WIDTH` (300px) and does not grow.
+  - *fill*: `Plot`, `MatrixPlot`, `Image`. They grow. Inside a `Row`, children that contain any fill
+    element share the remaining width equally. Inside a `Column`, fill elements share the
+    remaining height (with today's minimum height of 120px), and compact elements take their
+    natural height.
+  - A container that overflows scrolls vertically, like today's sidebar.
+- **Check against the use case:**
+  `pa.Row(pa.Column(ds_select, *ds_params), pa.Column(algo_select, *algo_params), clustering)`
+  gives two 300px parameter columns and a plot filling the rest. That is the requested layout, with
+  no sizing arguments.
+- **Backend neutrality:** "compact/fill" and "equal share" map onto flexbox (gpui/taffy), egui,
+  Qt layouts and the web without exposing CSS terms.
+- **Deferred:** explicit sizing (e.g. `weights=` on `Row`, or a min/max width), `Tabs`, a titled
+  group/card, and a responsive wrap for narrow windows.
 
 ## Architecture sketch
 
@@ -640,5 +679,8 @@ def foo(progress: pa.Progress) -> pa.Plot:
    arbitrary values"). Open sub-question: `.map` projections vs. a node returning a `View` subtree
    (tied to question 5).
 5. ~~Fragments in the first spec?~~ Yes (see "Nodes returning view subtrees").
-6. Memory policy for cached results of hidden nodes: keep them while the node is alive (the
+6. ~~Memory policy for hidden nodes?~~ Python keeps results while the node is alive; Rust drops
+   prepared forms of slots that leave the view (see "Memory policy for hidden nodes").
+7. Layout vocabulary and sizing for the first spec (see "Layout"). Previously: memory policy for
+   cached results of hidden nodes: keep them while the node is alive (the
    proposal), or evict them?
