@@ -175,6 +175,25 @@ def sound() -> Sound: ...
 
 Recommendation: support 2 and 3; 1 works anyway but is documented as "only for cheap nodes".
 
+### Nodes returning view subtrees (fragments)
+
+**Decision: included in the first spec.** Without them, the only low-boilerplate way to place a
+multi-output node is unpacking in `view`, which is the inefficient option 1 above.
+
+- `view` itself is just the root node, of type `Computed[View]` (`pa.run(view)` wraps it). A
+  fragment is the same mechanism one level down. So there is no separate concept: the UI renders a
+  slot whose node produces a layout element exactly like it renders the root.
+- A fragment may contain inputs, outputs, inline layouts and further node slots. Inputs inside a
+  fragment keep their state like anywhere else, because their identity is the Python object, not
+  the position.
+- A fragment re-runs independently of its parent, which is the Streamlit fragment semantics from
+  the prior art doc, without the staleness hazard. A parent that reads an input owned by a fragment
+  simply depends on it as well.
+- Open detail for the spec: whether the same input or node object may appear in more than one
+  place in a view at the same time. Two synchronized widgets for one input would be a feature. Two
+  slots showing the same node are harmless. The simplest first rule is to reject duplicates with a
+  clear error.
+
 ### Diamond dependencies and glitches
 
 The setup: `B` and `C` both read input `A`, and `D` reads `B` and `C`. In a *push*-based system
@@ -620,6 +639,6 @@ def foo(progress: pa.Progress) -> pa.Plot:
 4. ~~Node API shape?~~ A single `pa.computed` returning arbitrary values (see "Nodes return
    arbitrary values"). Open sub-question: `.map` projections vs. a node returning a `View` subtree
    (tied to question 5).
-5. Nodes returning `View` subtrees (fragments): in or out of the first spec?
+5. ~~Fragments in the first spec?~~ Yes (see "Nodes returning view subtrees").
 6. Memory policy for cached results of hidden nodes: keep them while the node is alive (the
    proposal), or evict them?
