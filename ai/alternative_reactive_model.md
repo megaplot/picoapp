@@ -372,14 +372,15 @@ and one returning a non-element value (`dataset`) is a *value node*.
 `pa.View` from the early sketches does not exist. `view` returns a plain element
 (`def view() -> pa.Element`, or the concrete `-> pa.Row`). It returns no `Memoized`, because `pa.run`
 already wraps `view` in the root node. The alias `Element | Memoized[Element]` is what `Row`/`Column`
-accept, and what a user writes for an unannotated mixed list (`list[pa.Child]`).
+accept, and what a user writes for an unannotated mixed list (`list[pa.Child]`). (`Child` was
+the working name.)
 
 Problems with `Child`: the name says where the value goes (into a layout), not what it is ("an
 element, or a node producing one"). It also doesn't match `view`'s return type.
 
 | Name | Pro | Con |
 |---|---|---|
-| `Child` (current) | Short; matches the parameter name `*children`. | Positional, not descriptive. Unrelated to `view`'s return type. |
+| `Child` (working name) | Short; matches the parameter name `*children`. | Positional, not descriptive. Unrelated to `view`'s return type. |
 | `ElementLike` | Follows the Python convention for "X or something that resolves to X" (`numpy.typing.ArrayLike`, `os.PathLike`). Shows the relation to `Element` directly. | Longer. `os.PathLike` is a protocol, `ArrayLike` a union, so "-Like" isn't one exact mechanism. |
 | `Viewable` | Panel precedent (`panel.viewable.Viewable`). Relates to `view`. | In Panel it's a base class of all components, not "maybe lazy". Adjective, reads oddly as a type in `list[pa.Viewable]`. |
 | `View` | Matches `def view()`. | Suggests the whole view, not one part of it. A node returning a `Row` would be a "`View` inside a `View`". |
@@ -390,10 +391,10 @@ Making the alias unnecessary is not an option: `Memoized[T]` can't be an `Elemen
 `T <: Element` (no conditional base classes), and making every `Memoized` an `Element` loses the
 `Row(dataset)` error (see "Type checking", footnote ³).
 
-Recommendation: **`ElementLike`**. It reads as "anything that becomes an element", which is
+**Decision: `ElementLike`.** It reads as "anything that becomes an element", which is
 exactly the semantics. `view` keeps returning `pa.Element`, so the pair `Element`/`ElementLike`
-explains itself: layouts accept the `-Like` form, `view` produces the plain form. `Viewable` is the
-second choice.
+explains itself: layouts accept the `-Like` form, `view` produces the plain form. `Viewable` was
+the second choice.
 
 ## Layout
 
@@ -651,9 +652,9 @@ class Memoized(Generic[T_co]):             # covariant: Memoized[Plot] <: Memoiz
 
 def memoize(fn: Callable[[], T]) -> Memoized[T]: ...
 
-Child = Element | Memoized[Element]
+ElementLike = Element | Memoized[Element]
 class Row(Element):
-    def __init__(self, *children: Child) -> None: ...
+    def __init__(self, *children: ElementLike) -> None: ...
 ```
 
 **Results.**
@@ -671,7 +672,7 @@ class Row(Element):
 | `Row(*[slider, checkbox, radio])`, unannotated list of inputs | ok once `Input` is covariant ¹ | ok |
 | `ins = [slider, radio]; ins.append(int_slider)` | ok | **error** ² |
 | `Row(*[slider, plot_node])`, unannotated mix of an input and a node | **error** ³ | ok |
-| the same lists annotated as `list[pa.Child]` | ok | ok |
+| the same lists annotated as `list[pa.ElementLike]` | ok | ok |
 
 ¹ mypy infers list literals by *joining* element types. The join of `Input[float]` and
 `Input[bool]` with an invariant type parameter is `object`, not the common base `InputBase`. A
@@ -682,7 +683,7 @@ because `value` is read-only for callbacks. A later setter for presets cannot ta
 
 ² pyright infers the list as `list[Slider | Radio[str]]`, so appending an `IntSlider` fails. This is
 general pyright list inference and applies to today's API in the same way. The fix is an
-annotation (`list[pa.Child]` or `list[pa.InputBase]`).
+annotation (`list[pa.ElementLike]` or `list[pa.InputBase]`).
 
 ³ `Element` and `Memoized` have no common base, so mypy's join is `object`. Making `Memoized` an
 `Element` would fix the join, but then `Memoized[str]` would be accepted as a child too. That
@@ -690,11 +691,11 @@ loses exactly the error we want, so the annotation is the right fix.
 
 **Conclusion.** The model type-checks without `Any`. Variance is not a problem, because `Callable`
 and a covariant `Memoized` both propagate subtypes. The only friction is unannotated mixed lists,
-which need a `list[pa.Child]` annotation. That should be documented. `Child` and `InputBase` must
-therefore be public names.
+which need a `list[pa.ElementLike]` annotation. That should be documented. `ElementLike` and
+`InputBase` must therefore be public names.
 
 **Design consequence: no bare callables as children.** A first version of the sketch also
-accepted `Child = Element | Memoized[Element] | Callable[[], Element]` (bare lambdas and `def`s).
+accepted `Element | Memoized[Element] | Callable[[], Element]` (bare lambdas and `def`s).
 That type-checks equally well, positive and negative: `Callable` is covariant in its return type,
 so heterogeneous lambdas pass and lambdas returning non-elements fail. Semantically, though, a lambda created inside
 `view` is a new object on every `view` run. picoapp can neither cache it nor give it a stable slot.
@@ -769,5 +770,5 @@ def foo(progress: pa.Progress) -> pa.Plot:
 7. ~~Layout vocabulary and sizing?~~ As proposed in "Layout": `Row`/`Column`, compact/fill
    sizing, no sizing API yet.
 8. ~~Naming?~~ `@pa.memoize` / `pa.Memoized[T]` (see "Naming").
-9. Name of the `Element | Memoized[Element]` alias? Open: `Child` vs. `ElementLike` (recommended)
-   vs. `Viewable` (see "Naming of the `Child` alias").
+9. ~~Name of the `Element | Memoized[Element]` alias?~~ `ElementLike` (see "Naming of the
+   `Child` alias").

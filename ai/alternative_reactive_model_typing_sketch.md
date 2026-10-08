@@ -16,7 +16,7 @@ Result with mypy 2.4.0 (`--strict` plus the repo's `mypy.ini` flags, e.g.
 `disallow_any_decorated`) and pyright 1.1.414: every `# E` line errors in both. Besides those, there
 are exactly two errors: mypy on `Row(*mixed)` (an unannotated input + node list joins to
 `object`) and pyright on `inputs.append(int_slider)` (the list is inferred as the union of its
-initial element types). Both go away with a `list[Child]` annotation; see the main doc.
+initial element types). Both go away with a `list[ElementLike]` annotation; see the main doc.
 
 ```py
 """Type-checking experiment for the alternative reactive model's API.
@@ -98,11 +98,11 @@ def memoize(fn: Callable[[], T]) -> Memoized[T]:
 
 
 # What a view slot accepts: a plain element or a node producing an element.
-Child = Element | Memoized[Element]
+ElementLike = Element | Memoized[Element]
 
 
 class Layout(Element):
-    def __init__(self, *children: Child) -> None:
+    def __init__(self, *children: ElementLike) -> None:
         self.children = children
 
 
@@ -169,7 +169,7 @@ Column(*inputs)
 mixed = [slider, plot_node]
 Row(*mixed)
 
-mixed_annotated: list[Child] = [slider, plot_node, memoize(lambda: Audio())]
+mixed_annotated: list[ElementLike] = [slider, plot_node, memoize(lambda: Audio())]
 mixed_annotated.append(Plot())
 Row(*mixed_annotated)
 

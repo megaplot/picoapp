@@ -56,8 +56,8 @@ pa.Radio(name, values, init=None)                                   # Input[T]
 pa.Plot(...), pa.MatrixPlot(...), pa.Image(...), pa.Audio(...)
 
 # Layout.
-pa.Row(*children: pa.Child)
-pa.Column(*children: pa.Child)
+pa.Row(*children: pa.ElementLike)
+pa.Column(*children: pa.ElementLike)
 
 # Nodes.
 @pa.memoize
@@ -79,8 +79,9 @@ pa.CycleError                        # raised when a node (transitively) calls i
       need (see the typing sketch).
   - `Layout(Element)`: `Row`, `Column`.
 - `Memoized(Generic[T_co])`: callable, with `__call__() -> T_co` and `map`.
-- `Child = Element | Memoized[Element]`. Bare callables are not accepted: a lambda created inside
-  `view` would be a new object every run.
+- `ElementLike = Element | Memoized[Element]`: what `Row`/`Column` accept. `view` returns the
+  plain `Element`. Bare callables are not accepted: a lambda created inside `view` would be a new
+  object every run.
 
 `Output` and `Input` stop being union type aliases and become base classes. Existing user
 annotations like `x: pa.Output` keep working.
