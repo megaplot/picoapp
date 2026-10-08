@@ -125,6 +125,56 @@ Nothing has to be created eagerly for the worst case.
 - Equality: a recomputed node always counts as changed. Comparing large arrays is too expensive,
   consistent with the prior art doc's DIFF section. An optional `eq=` could be added later.
 
+### Nodes return arbitrary values
+
+**Decision.** There is one `pa.computed` and no output-specific constructors. A node may return any
+value. Only nodes producing an `Element` can be placed in a view, which the type checker enforces
+(see "Type checking"). Arbitrary values give:
+
+- **shared intermediates**, e.g. `dataset()` in the sketch, or `kernel()`/`signal()` in
+  `example_filter`;
+- **several outputs that always change together, computed once.** For example, a changed sound
+  updates an `Audio` output, a waveform `Plot` and a spectrum `Plot`. One node can produce all
+  three, instead of three nodes that would each need the shared computation.
+
+**Placing the parts of a multi-output node.** There are three ways:
+
+```py
+@dataclass(frozen=True)
+class Sound:
+    audio: pa.Audio
+    waveform: pa.Plot
+    spectrum: pa.Plot
+
+@pa.computed
+def sound() -> Sound: ...
+```
+
+1. **Unpack inside `view`:** `s = sound(); return pa.Column(s.audio, s.waveform, s.spectrum)`.
+   Simple, but `view` now depends on `sound`. `view` therefore waits for the heavy computation,
+   which brings back the latency problem: revealed inputs appear only after `sound` finishes. It
+   also makes the outputs inline elements of `view`. They then need identity-based reuse
+   (`ai/flat_view_model.md`), so that the `Audio` doesn't restart when `view` re-runs for an
+   unrelated reason. **Not recommended for heavy nodes.** A cheap node may be read in `view` without
+   problems, e.g. one that returns a list of labels.
+2. **Projection nodes:** `Computed[T].map(f: Callable[[T], U]) -> Computed[U]` creates a cheap
+   derived node, created once outside `view`:
+   ```py
+   sound_audio = sound.map(lambda s: s.audio)          # Computed[pa.Audio]
+   sound_waveform = sound.map(lambda s: s.waveform)    # Computed[pa.Plot]
+   def view() -> pa.View:
+       return pa.Row(controls, pa.Column(sound_audio, sound_waveform))
+   ```
+   `view` stays cheap, each part gets its own slot, and the typing is exact because `.map` is a
+   plain generic method. A tuple-splitting helper (`a, b, c = pa.split(sound)`) is not expressible
+   generically for any arity, since Python typing has no `Map` over a `TypeVarTuple`. It would need
+   one overload per arity.
+3. **The node returns a `View` subtree:** `sound` returns `pa.Column(audio, waveform, spectrum)`
+   and is placed as one slot. This is a fragment (open question 5). It is the least boilerplate when
+   the parts sit together anyway, but it moves layout into the node.
+
+Recommendation: support 2 and 3; 1 works anyway but is documented as "only for cheap nodes".
+
 ### Diamond dependencies and glitches
 
 The setup: `B` and `C` both read input `A`, and `D` reads `B` and `C`. In a *push*-based system
@@ -567,9 +617,9 @@ def foo(progress: pa.Progress) -> pa.Plot:
 2. ~~Ship only level 0 first?~~ No, see 1.
 3. ~~Automatic tracking vs. explicit dependencies?~~ Automatic (see "Does the graph have to be
    static?").
-4. Node API shape: a decorator (`@pa.computed`) vs. output-specific constructors
-   (`pa.Plot.computed(fn)`). Do nodes have to return `Output`s, or can they also return arbitrary
-   values (like `dataset` above), i.e. general memoization?
+4. ~~Node API shape?~~ A single `pa.computed` returning arbitrary values (see "Nodes return
+   arbitrary values"). Open sub-question: `.map` projections vs. a node returning a `View` subtree
+   (tied to question 5).
 5. Nodes returning `View` subtrees (fragments): in or out of the first spec?
 6. Memory policy for cached results of hidden nodes: keep them while the node is alive (the
    proposal), or evict them?
