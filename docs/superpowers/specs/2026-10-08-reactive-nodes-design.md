@@ -139,12 +139,16 @@ element is treated as a single-child `Column`.
 
 - A **slot** is a `Memoized` placed in a layout: the root, a `Memoized` child of a `Row`/`Column`,
   or a `Memoized` inside a fragment's result.
-- **Visible slots** are those reachable from the root through the *latest results* of slot nodes.
+- **Visible slots** are those reachable from the root through the last *shown* content of slot
+  nodes: the latest good result. An error result leaves the previous content on screen (see "UI"),
+  so its child slots stay visible.
 - A slot whose result is a `Layout` is a **fragment**. A slot whose result is an `Output` or an
   `Input` is a leaf. Any other result type produces a slot error ("node `f` returned `int`, expected
   an `Element`").
 - **Duplicates.** The same input object or node object appearing twice in the visible tree is an
-  error, shown in the slot that introduces the second occurrence.
+  error, shown in the slot that introduces the second occurrence: when a step produces a slot's
+  content, its directly placed inputs and nodes are checked against those of all other visible
+  slots, the root, and the slot itself.
 - **Value nodes** (results that aren't elements, like `dataset`) are never slots themselves. They
   are evaluated when a slot node pulls them.
 
@@ -158,30 +162,40 @@ class Engine:
     def set_values(self, changes: Sequence[tuple[int, object]]) -> None: ...
     def stale_visible_slots(self) -> list[int]: ...
     def step(self) -> SlotResult | None: ...
+    def reject(self, node_id: int) -> None: ...
+    @property
+    def root_id(self) -> int: ...
 ```
 
 - **`set_values`** writes `_value` and bumps `version` for changed values. Input ids are resolved
   through a `weakref.WeakValueDictionary`. Unknown ids (input already collected) are ignored.
-- **`stale_visible_slots`** returns the ids of visible slots that are stale. The UI uses it for the
-  busy dim.
+- **`stale_visible_slots`** returns the ids of visible slots that the next steps will update:
+  stale ones, and ones that became visible again after being hidden (the UI dropped their
+  content, so it is re-sent from the cache without re-evaluation). It is non-empty exactly when
+  `step` returns a result. The UI uses it for the busy dim.
 - **`step`** brings up to date the first stale visible slot in priority order and returns its
   `SlotResult`. It returns `None` when nothing visible is stale. Pulled value nodes are evaluated
   inside the same step. Priority order:
   1. the root;
-  2. fragments, top-down in tree order (so revealed inputs appear first);
+  2. fragments, top-down in tree order (so revealed inputs appear first); a slot never evaluated
+     counts as a fragment, since it might reveal inputs;
   3. leaves in tree order.
 - **`SlotResult`** is `(node_id, version, content)`, where `content` is the element tree or output,
   or an error string (message + traceback).
+- **`reject`** is called by the worker when Rust can't parse the last step's content (e.g. an
+  `Image` whose data doesn't match its size). The UI then shows an error above the slot's previous
+  content, so the engine restores that content as shown.
 
 **Worker loop (Rust).**
 
 1. Block until a UI message arrives.
 2. Drain all pending messages, so the latest value per input wins (coalescing).
-3. Call `set_values`, then send the UI the stale slot set.
-4. Loop: call `step`, parse the result into Rust types, send it, then drain new messages without
-   blocking. If there are new messages, apply them as in steps 2–3 and continue. The next `step`
-   picks the highest-priority stale slot of the new state; this is "option A, re-plan". When
-   `step` returns `None`, go back to 1.
+3. Call `set_values`, then send the UI the stale slot set. If it is empty, go back to 1.
+4. Call `step`, parse the result into Rust types (calling `reject` on a parse failure), send it,
+   then drain new messages without blocking, and continue with 3 (with the new messages, if any).
+   The next `step` picks the highest-priority stale slot of the new state; this is "option A,
+   re-plan". A stale set goes out before every step, so the UI can dim a slot while its step
+   runs.
 
 The first round starts without any UI message. Python is only ever called from this thread, and
 the GIL is held per call, as today.
@@ -228,8 +242,10 @@ enum SlotContent { Tree(ViewTree), Error(String) }
 
 One `AppView` entity replaces the per-level `ReactiveView` entities. Its state:
 
-- **`slots: HashMap<NodeId, SlotState>`**, where `SlotState` holds the latest content, its
-  version, `busy_since: Option<Instant>`, and the error (if any) shown over the last good content.
+- **`slots: HashMap<NodeId, SlotState>`**, where `SlotState` holds the last good content,
+  `busy_since: Option<Instant>`, and the error (if any) shown over the last good content. (Results
+  arrive in order on one channel, so the Rust side needs no version; the Python `SlotResult` keeps
+  it for tests.)
   - `PreparedOutput` (image upload, `AudioPlayer` entity, plot data) is built when a slot result
     arrives, as today. It is kept until the slot's next result or until the slot becomes invisible.
 - **`widgets: HashMap<InputId, InputWidgetState>`**: one gpui widget state per *visible* input.
@@ -270,7 +286,8 @@ numpy-only algorithms, so it needs no new dependencies. Every existing example i
 
 ## Testing
 
-- **Engine unit tests** (`tests/test_engine.py`, pure Python, no UI):
+- **Engine unit tests** (pure Python, no UI; split by module into `tests/test_inputs.py`,
+  `tests/test_memoize.py` and `tests/test_engine.py`):
   - tracking records reads in order, and dependencies change with branches;
   - only nodes that read a changed input re-run;
   - a diamond evaluates its sink once;
@@ -290,6 +307,9 @@ numpy-only algorithms, so it needs no new dependencies. Every existing example i
   the typing sketch, plus the negative cases as `# type: ignore[arg-type]` lines. The repo's
   `warn_unused_ignores = True` fails CI if an expected error disappears. pyright is verified once
   manually; it is not added to CI.
+- **Examples under the repo's strict mypy:** `disallow_any_decorated` rejects `@pa.memoize def f()
+  -> np.ndarray` (numpy's array type contains `Any`), so `mypy.ini` relaxes that one flag for the
+  example modules that memoize arrays. User code with default mypy settings is unaffected.
 - **Rust unit tests:** the visible-set computation and slot/widget pruning (pure functions over
   `ViewTree`), and the worker loop's drain/coalesce logic, in the style of today's
   `run_scheduler` tests.
