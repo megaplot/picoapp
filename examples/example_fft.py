@@ -5,24 +5,19 @@ import picoapp as pa
 _SAMPLE_RATE = 22050
 
 
-inputs = pa.Inputs(
-    (slider_freq := pa.Slider("Frequency", 20.0, 440.0, 10_000.0, log=True)),
-    (slider_kernel_size := pa.IntSlider("Kernel size", 16, 64, 1024)),
-    (
-        radio_window := pa.Radio(
-            "Window", ["Box", "Hann", "Hann (asym)", "Hamming", "Hamming (asym)"]
-        )
-    ),
-    (
-        radio_complex_mode := pa.Radio(
-            "Complex Mode",
-            ["complex", "real: cosine", "real: sine", "real: chained/convolved"],
-        )
-    ),
+slider_freq = pa.Slider("Frequency", 20.0, 440.0, 10_000.0, log=True)
+slider_kernel_size = pa.IntSlider("Kernel size", 16, 64, 1024)
+radio_window = pa.Radio(
+    "Window", ["Box", "Hann", "Hann (asym)", "Hamming", "Hamming (asym)"]
+)
+radio_complex_mode = pa.Radio(
+    "Complex Mode",
+    ["complex", "real: cosine", "real: sine", "real: chained/convolved"],
 )
 
 
-def callback() -> pa.Outputs:
+@pa.memoize
+def kernel() -> np.ndarray:
     print(f"{slider_freq.value=} {slider_kernel_size.value=} {radio_window.value=}")
 
     freq = slider_freq.value
@@ -52,24 +47,36 @@ def callback() -> pa.Outputs:
     if window is not None:
         kernel *= window
 
+    return kernel
+
+
+@pa.memoize
+def plots() -> pa.Column:
     # When using `np.fft.fft` with an implicit length that is larger then the signal
     # itself, it gets zero padded, leading to an increased spectral resolution.
     n_block = _SAMPLE_RATE
 
-    return pa.Outputs(
+    return pa.Column(
         pa.Plot(
-            xs=np.arange(n_kernel),
-            ys=np.real(kernel),
+            xs=np.arange(len(kernel())),
+            ys=np.real(kernel()),
         ),
         pa.Plot(
-            xs=np.arange(n_kernel),
-            ys=np.imag(kernel),
+            xs=np.arange(len(kernel())),
+            ys=np.imag(kernel()),
         ),
         pa.Plot(
             xs=np.arange(n_block) / n_block * 2 * _SAMPLE_RATE,
-            ys=np.abs(np.fft.fft(kernel, n=n_block)),
+            ys=np.abs(np.fft.fft(kernel(), n=n_block)),
         ),
     )
 
 
-pa.run(pa.Reactive(inputs, callback))
+def view() -> pa.Element:
+    return pa.Row(
+        pa.Column(slider_freq, slider_kernel_size, radio_window, radio_complex_mode),
+        plots,
+    )
+
+
+pa.run(view)

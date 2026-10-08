@@ -4,15 +4,14 @@ import numpy as np
 import picoapp as pa
 from picoapp.matplotlib import figure_to_image
 
-inputs = pa.Inputs(
-    (slider_a := pa.Slider("a", -10.0, 0.5, 10.0)),
-    (slider_b := pa.Slider("b", -10.0, 0.5, 10.0)),
-    (slider_c := pa.Slider("c", -10.0, 0.5, 10.0)),
-    (negate := pa.Checkbox("Negate")),
-)
+slider_a = pa.Slider("a", -10.0, 0.5, 10.0)
+slider_b = pa.Slider("b", -10.0, 0.5, 10.0)
+slider_c = pa.Slider("c", -10.0, 0.5, 10.0)
+negate = pa.Checkbox("Negate")
 
 
-def callback() -> pa.Outputs:
+@pa.memoize
+def image() -> pa.Image:
     print(f"{slider_a.value=} {slider_b.value=} {slider_c.value=} {negate.value=}")
     a = slider_a.value
     b = slider_b.value
@@ -28,9 +27,11 @@ def callback() -> pa.Outputs:
     ax.plot(xs, ys)
     fig.tight_layout()
 
-    image = figure_to_image(fig)
-
-    return pa.Outputs(image)
+    return figure_to_image(fig)
 
 
-pa.run(pa.Reactive(inputs, callback))
+def view() -> pa.Element:
+    return pa.Row(pa.Column(slider_a, slider_b, slider_c, negate), image)
+
+
+pa.run(view)

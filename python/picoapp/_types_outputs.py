@@ -114,8 +114,3 @@ class Image(Output):
             raise ValueError(
                 f"Image data must be of type np.uint8, but is {self.data.dtype}."
             )
-
-
-class Outputs:
-    def __init__(self, *outputs: Output):
-        self.outputs = outputs

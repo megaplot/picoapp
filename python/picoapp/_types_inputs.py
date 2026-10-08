@@ -70,7 +70,6 @@ class Slider(Input[float]):
         super().__init__(init)
         self._name = name
         self._min = min
-        self._init = init  # read by the old Rust extractor (removed in Task 4)
         self._max = max
         self._log = log
         self._decimal_places = decimal_places
@@ -100,7 +99,6 @@ class IntSlider(Input[int]):
         super().__init__(init)
         self._name = name
         self._min = min
-        self._init = init  # read by the old Rust extractor (removed in Task 4)
         self._max = max
 
     @property
@@ -125,7 +123,6 @@ class Checkbox(Input[bool]):
     def __init__(self, name: str, init: bool = False) -> None:
         super().__init__(init)
         self._name = name
-        self._init = init  # read by the old Rust extractor (removed in Task 4)
 
     def __bool__(self) -> bool:
         return self.value
@@ -144,7 +141,6 @@ class Radio(Input[T]):
         super().__init__(values[index])
         self._name = name
         self._values = values
-        self._init_index = index  # read by the old Rust extractor (removed in Task 4)
         self._index = index
 
     def _write_ui_value(self, raw: object) -> None:
@@ -155,8 +151,3 @@ class Radio(Input[T]):
         if not isinstance(raw, int):
             raise TypeError(f"Radio value must be an index, got {raw!r}")
         return self._values[raw]
-
-
-class Inputs:
-    def __init__(self, *inputs: Input[T]):
-        self.inputs = inputs

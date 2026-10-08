@@ -1,67 +1,24 @@
 use pyo3::prelude::*;
 use pyo3::types::PySequence;
 
-/// Wrapper newtype for the underlying PyObject instance.
-#[derive(Debug)]
-pub struct PyRadio(Py<PyAny>);
-
-impl PyRadio {
-    pub fn new(obj: Py<PyAny>) -> Self {
-        PyRadio(obj)
-    }
-    pub fn set_to_index(&self, py: Python<'_>, index: usize) -> PyResult<()> {
-        let py_radio = self.0.bind(py);
-        let values = py_radio.getattr("_values")?.cast_into::<PySequence>()?;
-        py_radio.setattr("_value", values.get_item(index)?)
-    }
-}
-
-/// Pure-Rust half of a `Radio`, sent to the UI thread; see `into_parts`.
+/// Pure-Rust description of a `Radio`, sent to the UI thread.
 #[derive(Debug, Clone)]
 pub struct RadioSpec {
-    pub name: String,
-    pub init_index: usize,
-    pub value_names: Vec<String>,
-}
-
-#[derive(Debug)]
-pub struct Radio {
     pub name: String,
     // Note that a radio is not concerned with the underlying user (Python)
     // type, it only cares about the string representations of the values
     // and internally operates on indices.
-    pub init_index: usize,
+    /// Index of the currently selected value.
+    pub index: usize,
     pub value_names: Vec<String>,
-    pub py_radio: PyRadio,
 }
 
-impl Radio {
-    /// Splits into the plain-data half sent to the UI and the `PyObject`
-    /// handle that stays on the worker thread.
-    pub fn into_parts(self) -> (RadioSpec, PyRadio) {
-        let Radio {
-            name,
-            init_index,
-            value_names,
-            py_radio,
-        } = self;
-        (
-            RadioSpec {
-                name,
-                init_index,
-                value_names,
-            },
-            py_radio,
-        )
-    }
-}
-
-impl<'a, 'py> FromPyObject<'a, 'py> for Radio {
+impl<'a, 'py> FromPyObject<'a, 'py> for RadioSpec {
     type Error = PyErr;
 
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let name: String = obj.getattr("_name")?.extract()?;
-        let init_index: usize = obj.getattr("_init_index")?.extract()?;
+        let index: usize = obj.getattr("_index")?.extract()?;
 
         // Note that a radio supports arbitrary underlying types, and we are using `__str__` calls to
         // infer the label strings.
@@ -74,11 +31,10 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Radio {
             value_names.push(value_name);
         }
 
-        Ok(Radio {
+        Ok(RadioSpec {
             name,
-            init_index,
+            index,
             value_names,
-            py_radio: PyRadio::new(obj.to_owned().unbind()),
         })
     }
 }
