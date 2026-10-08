@@ -31,13 +31,13 @@ kmeans_init = pa.Radio("init", ["random", "k-means++", "custom"])   # the "submo
 custom_seed = pa.IntSlider("seed", 0, 0, 100)                       # only for init == "custom"
 dbscan_eps = pa.Slider("eps", 0.01, 0.5, 2.0)
 
-@pa.computed
+@pa.memoize
 def dataset() -> Dataset:              # reads only the active branch's inputs
     if ds_select.value == "blobs":
         return make_blobs(blobs_n.value)
     return make_moons(moons_noise.value)
 
-@pa.computed
+@pa.memoize
 def clustering() -> pa.Plot:
     data = dataset()                   # depends on the dataset node
     if algo_select.value == "kmeans":
@@ -72,13 +72,13 @@ right away. `clustering` re-runs afterwards, because it reads `kmeans_init` too.
 
 ### Does the graph have to be static? No.
 
-- **Nodes** are ordinary Python objects (`Computed[T]`). They can be created anywhere at any time,
+- **Nodes** are ordinary Python objects (`Memoized[T]`). They can be created anywhere at any time,
   including lazily, the same way hoisted inputs can.
 - **Edges** are discovered at runtime (automatic dependency tracking). While a node evaluates,
   picoapp records every `input.value` read and every `node()` call. The recorded set replaces the
   node's previous dependencies, so dependencies may differ per evaluation, e.g. per `if` branch.
   This is how Shiny, Solid, MobX and Vue work.
-- The alternative is explicit dependencies, e.g. `pa.computed(fn, slider_a, slider_b)`, where `fn`
+- The alternative is explicit dependencies, e.g. `pa.memoize(fn, slider_a, slider_b)`, where `fn`
   receives the values. The graph becomes static, and conditional dependencies have to be
   over-approximated (an inactive branch's slider would trigger recomputes). It is also not
   type-safe for variadic inputs: Python has no `Map[Input, T]` over a `TypeVarTuple`, so it would
@@ -104,8 +104,8 @@ def coefficient_slider(i: int) -> pa.Slider:
     return pa.Slider(f"coefficient of x^{i}", -10.0, 0.5, 10.0)
 
 @functools.cache
-def residual_plot(i: int) -> pa.Computed[pa.Plot]:
-    return pa.computed(lambda: pa.Plot(...coefficient_slider(i).value...))
+def residual_plot(i: int) -> pa.Memoized[pa.Plot]:
+    return pa.memoize(lambda: pa.Plot(...coefficient_slider(i).value...))
 ```
 
 Nothing has to be created eagerly for the worst case.
@@ -114,7 +114,7 @@ Nothing has to be created eagerly for the worst case.
 
 - Every input has a version counter, incremented when its value changes.
 - A node remembers the versions of the dependencies it read. It is stale if any of them advanced,
-  or, for a computed dependency, if that node was recomputed.
+  or, for a memoized dependency, if that node was recomputed.
 - A node's last result is kept while the node object is alive, even while it is hidden.
   Consequences:
   - The `has_changed` pitfall disappears. A hidden output whose input changed stays stale and
@@ -127,7 +127,7 @@ Nothing has to be created eagerly for the worst case.
 
 ### Nodes return arbitrary values
 
-**Decision.** There is one `pa.computed` and no output-specific constructors. A node may return any
+**Decision.** There is one `pa.memoize` and no output-specific constructors. A node may return any
 value. Only nodes producing an `Element` can be placed in a view, which the type checker enforces
 (see "Type checking"). Arbitrary values give:
 
@@ -146,7 +146,7 @@ class Sound:
     waveform: pa.Plot
     spectrum: pa.Plot
 
-@pa.computed
+@pa.memoize
 def sound() -> Sound: ...
 ```
 
@@ -157,11 +157,11 @@ def sound() -> Sound: ...
    (`ai/flat_view_model.md`), so that the `Audio` doesn't restart when `view` re-runs for an
    unrelated reason. **Not recommended for heavy nodes.** A cheap node may be read in `view` without
    problems, e.g. one that returns a list of labels.
-2. **Projection nodes:** `Computed[T].map(f: Callable[[T], U]) -> Computed[U]` creates a cheap
+2. **Projection nodes:** `Memoized[T].map(f: Callable[[T], U]) -> Memoized[U]` creates a cheap
    derived node, created once outside `view`:
    ```py
-   sound_audio = sound.map(lambda s: s.audio)          # Computed[pa.Audio]
-   sound_waveform = sound.map(lambda s: s.waveform)    # Computed[pa.Plot]
+   sound_audio = sound.map(lambda s: s.audio)          # Memoized[pa.Audio]
+   sound_waveform = sound.map(lambda s: s.waveform)    # Memoized[pa.Plot]
    def view() -> pa.View:
        return pa.Row(controls, pa.Column(sound_audio, sound_waveform))
    ```
@@ -180,7 +180,7 @@ Recommendation: support 2 and 3; 1 works anyway but is documented as "only for c
 **Decision: included in the first spec.** Without them, the only low-boilerplate way to place a
 multi-output node is unpacking in `view`, which is the inefficient option 1 above.
 
-- `view` itself is just the root node, of type `Computed[View]` (`pa.run(view)` wraps it). A
+- `view` itself is just the root node, of type `Memoized[View]` (`pa.run(view)` wraps it). A
   fragment is the same mechanism one level down. So there is no separate concept: the UI renders a
   slot whose node produces a layout element exactly like it renders the root.
 - A fragment may contain inputs, outputs, inline layouts and further node slots. Inputs inside a
@@ -217,7 +217,7 @@ a new `B` and an old `C`. That intermediate result is a "glitch".
 This model is not affected, because it **marks stale by push, but evaluates by pull**:
 
 1. A change bumps `A`'s version. Nothing is recomputed yet.
-2. When the round reaches `D`, picoapp first brings `D`'s computed dependencies up to date. It
+2. When the round reaches `D`, picoapp first brings `D`'s memoized dependencies up to date. It
    walks them recursively and recomputes `B` and `C` if they are stale.
 3. Only then does it compare versions and re-run `D`, once, with consistent `B` and `C`.
 
@@ -286,13 +286,13 @@ like the flat model: rebuilt whenever `view` re-runs. Since `view` is itself a t
 proposals form one design:
 
 - **Level 0:** `pa.run(view)` with everything inline. Immediate-mode feel; a script-like hello world.
-- **Level 1:** lift expensive parts into `@pa.computed` nodes. Fine-grained reactivity, stable
+- **Level 1:** lift expensive parts into `@pa.memoize` nodes. Fine-grained reactivity, stable
   outputs.
 
 Users start at level 0 and optimize locally.
 
 **Clarification: level 0 needs no lambdas.** Outputs are built inline in `view` as plain objects
-(`pa.Plot(xs, ys)`), like in the flat proposal. Lambdas or `@pa.computed` appear only at level 1.
+(`pa.Plot(xs, ys)`), like in the flat proposal. Lambdas or `@pa.memoize` appear only at level 1.
 
 **But level 0 is not really immediate mode either.** It is the flat proposal *minus* `has_changed`
 and `clicked`, which this model replaces with tracking and handlers. Combined with hoisting, that
@@ -306,7 +306,7 @@ recomputation. Manual caching also fits this API badly:
 - Correct manual caching needs "double functions": a cached function that takes the values as
   parameters, plus a unary wrapper that reads `.value` and calls it.
 
-`@pa.computed` makes this unnecessary. Level 0 stays as a style (inline outputs in `view`), not as
+`@pa.memoize` makes this unnecessary. Level 0 stays as a style (inline outputs in `view`), not as
 a separate deliverable.
 
 ## Naming of `computed` / `Computed[T]`
@@ -349,11 +349,23 @@ Other candidates considered:
 - `formula`/`cell` (spreadsheets, marimo): an evocative analogy, but `cell` collides with
   notebook cells.
 
-**Recommendation: `derived` / `Derived[T]`.** It names the relationship the user has to understand
-("this value is derived from those inputs and stays consistent with them"). It also avoids both
-misreadings ("computes now", and `functools`-style "cached forever"). "Fragment" stays as a docs
-term for a derived value whose result is a view subtree. The second choice is `memo`, if the
-emphasis should be on "not recomputing".
+My recommendation was `derived` / `Derived[T]`, with `memo` as the second choice.
+
+**Decision: `@pa.memoize` / `pa.Memoized[T]`.**
+
+- The verb works as an instruction at the definition site ("memoize this computation"), and the
+  past participle describes what the object is.
+- The noun `memo` doesn't say what it does.
+- The `functools` con from the table applies only partially. The decorator only accepts
+  zero-argument functions (`Callable[[], T]`), so the type checker rejects any attempt to use it
+  like `functools.cache` on a function with arguments. What remains to document is that the "cache
+  key" is the set of tracked reads, not arguments.
+- `derived`/`Derived[T]` remains the fallback, should `memoize` turn out to confuse.
+
+**Terminology in docs.** A *fragment* is a memoized **view subtree**: a memoized node whose result
+is a layout (`Row`/`Column`), which may contain inputs, outputs and further memoized slots. It is
+not the same as a "memoized output". A memoized node returning a single `Plot` is a *leaf slot*,
+and one returning a non-element value (`dataset`) is a *value node*.
 
 ## Layout
 
@@ -398,7 +410,7 @@ emphasis should be on "not recomputing".
 
 ## Costs and risks
 
-- **Two concepts** (`view` and `computed`) instead of one. Partly mitigated by allowing inline
+- **Two concepts** (`view` and `memoize`) instead of one. Partly mitigated by allowing inline
   outputs in `view` for cheap cases (the "level 0" style), so a hello world needs only `view`.
 - **Tracking "magic".** Reads of untracked state (globals, files, a mutable object shared between
   nodes) don't invalidate anything, so results can silently go stale. This is the same contract as
@@ -413,7 +425,7 @@ emphasis should be on "not recomputing".
 
 ## Examples ported from `examples/`
 
-All examples use `@pa.computed` nodes. Layout names (`Row`/`Column`) are placeholders until the
+All examples use `@pa.memoize` nodes. Layout names (`Row`/`Column`) are placeholders until the
 layout API is settled.
 
 ### `example_1.py`: trivial, everything inline
@@ -443,7 +455,7 @@ pa.run(view)
 The same code with the plot lifted into a node. `view` then reads no inputs and runs only once:
 
 ```py
-@pa.computed
+@pa.memoize
 def plot() -> pa.Plot:
     ...  # the same computation
     return pa.Plot(xs, ys, x_limits=(-10, +10), y_limits=(-10, +10))
@@ -462,16 +474,16 @@ new `pa.Audio`, which restarts playback.
 slider_freq = pa.Slider("Frequency", 20.0, 440.0, 10_000.0, log=True, decimal_places=2)
 slider_zoom = pa.IntSlider("Samples shown", 100, 1000, _SAMPLE_RATE)
 
-@pa.computed
+@pa.memoize
 def sine() -> np.ndarray:                          # value node, shared by both outputs
     return create_sine(n=_SAMPLE_RATE, freq=slider_freq.value)
 
-@pa.computed
+@pa.memoize
 def plot() -> pa.Plot:
     n = slider_zoom.value
     return pa.Plot(xs=np.arange(n), ys=sine()[:n])
 
-@pa.computed
+@pa.memoize
 def audio() -> pa.Audio:
     return pa.Audio(sine(), sr=_SAMPLE_RATE)
 
@@ -489,28 +501,28 @@ signal inputs invalidate disjoint parts of the graph:
 - Moving `Window` re-runs `kernel`, its two plots, `convolved` and the three convolution plots.
 
 ```py
-@pa.computed
+@pa.memoize
 def kernel() -> np.ndarray:
     ...  # body of the old callback up to `kernel *= window`
 
-@pa.computed
+@pa.memoize
 def signal() -> np.ndarray:
     ...  # uses slider_wavelen_signal / slider_repeat_signal and len(kernel())
 
-@pa.computed
+@pa.memoize
 def convolved() -> np.ndarray:
     return np.convolve(signal(), kernel(), mode="same")
 
-def padded_plot(f: Callable[[np.ndarray], np.ndarray]) -> pa.Computed[pa.Plot]:
+def padded_plot(f: Callable[[np.ndarray], np.ndarray]) -> pa.Memoized[pa.Plot]:
     def fn() -> pa.Plot:
         n_max = max(len(signal()), len(kernel()))
         return pa.Plot(xs=np.arange(n_max), ys=np.pad(f(kernel()), (0, n_max - len(kernel()))))
-    return pa.computed(fn)
+    return pa.memoize(fn)
 
 kernel_re, kernel_im = padded_plot(np.real), padded_plot(np.imag)
-signal_plot = pa.computed(lambda: pa.Plot(xs=np.arange(len(signal())), ys=signal()))
+signal_plot = pa.memoize(lambda: pa.Plot(xs=np.arange(len(signal())), ys=signal()))
 conv_plots = [
-    pa.computed(lambda f=f: pa.Plot(xs=np.arange(len(convolved())), ys=f(convolved())))
+    pa.memoize(lambda f=f: pa.Plot(xs=np.arange(len(convolved())), ys=f(convolved())))
     for f in (np.real, np.imag, np.abs)
 ]
 
@@ -542,7 +554,7 @@ max_order = 10
 master = pa.IntSlider("Polynomial order", 0, 4, max_order)
 coefficients = [pa.Slider(f"coefficient of x^{i}", -10.0, 0.5, 10.0) for i in range(max_order + 1)]
 
-@pa.computed
+@pa.memoize
 def plot() -> pa.Plot:
     xs = np.linspace(-10.0, 10.0, 100)
     ys = sum(coefficients[k].value * xs**k for k in range(master.value + 1))
@@ -564,7 +576,7 @@ class App:
     def __init__(self) -> None:
         self.master = pa.IntSlider("Polynomial order", 0, 4, 10)
         self.coefficients = [pa.Slider(f"x^{i}", -10.0, 0.5, 10.0) for i in range(11)]
-        self.plot = pa.computed(self._plot)
+        self.plot = pa.memoize(self._plot)
 
     def _plot(self) -> pa.Plot:
         ...
@@ -576,8 +588,8 @@ class App:
 pa.run(App())
 ```
 
-A `pa.computed` *method decorator* would need a descriptor that creates one node per instance.
-That is possible, but `self.plot = pa.computed(self._plot)` is explicit and needs no magic.
+A `pa.memoize` *method decorator* would need a descriptor that creates one node per instance.
+That is possible, but `self.plot = pa.memoize(self._plot)` is explicit and needs no magic.
 
 ### `example_slow.py`: per-node errors
 
@@ -606,12 +618,12 @@ class Input(InputBase, Generic[T_co]):     # covariant, see below
     @property
     def value(self) -> T_co: ...
 
-class Computed(Generic[T_co]):             # covariant: Computed[Plot] <: Computed[Output]
+class Memoized(Generic[T_co]):             # covariant: Memoized[Plot] <: Memoized[Output]
     def __call__(self) -> T_co: ...
 
-def computed(fn: Callable[[], T]) -> Computed[T]: ...
+def memoize(fn: Callable[[], T]) -> Memoized[T]: ...
 
-Child = Element | Computed[Element]
+Child = Element | Memoized[Element]
 class Row(Element):
     def __init__(self, *children: Child) -> None: ...
 ```
@@ -623,9 +635,9 @@ class Row(Element):
 | `Row(slider, radio, Plot(), plot_node, audio_node, Column(...))`, heterogeneous varargs | ok | ok |
 | `Row(*[plot_node, audio_node])`, list of nodes with different output types | ok | ok |
 | `Row(*{"p": plot_node, "a": audio_node}.values())` | ok | ok |
-| `Row(plot_node if c else audio_node)`; `Row(*(computed(...) for ...))` | ok | ok |
-| `x: Computed[Output] = plot_node` (variance) | ok | ok |
-| `Row(42)`, `Row(computed(lambda: "text"))`, `Row(dataset)` (a `Computed[list[float]]`) | error ✓ | error ✓ |
+| `Row(plot_node if c else audio_node)`; `Row(*(memoize(...) for ...))` | ok | ok |
+| `x: Memoized[Output] = plot_node` (variance) | ok | ok |
+| `Row(42)`, `Row(memoize(lambda: "text"))`, `Row(dataset)` (a `Memoized[list[float]]`) | error ✓ | error ✓ |
 | `Row(lambda: Plot())`, `Row(int_fn)`: bare callables | error ✓ | error ✓ |
 | `Row(*{"p": plot_node, "d": dataset}.values())`, `Row(*[lambda: 1, lambda: Plot()])`: a bad item in a heterogeneous collection | error ✓ | error ✓ |
 | `Row(*[slider, checkbox, radio])`, unannotated list of inputs | ok once `Input` is covariant ¹ | ok |
@@ -644,22 +656,22 @@ because `value` is read-only for callbacks. A later setter for presets cannot ta
 general pyright list inference and applies to today's API in the same way. The fix is an
 annotation (`list[pa.Child]` or `list[pa.InputBase]`).
 
-³ `Element` and `Computed` have no common base, so mypy's join is `object`. Making `Computed` an
-`Element` would fix the join, but then `Computed[str]` would be accepted as a child too. That
+³ `Element` and `Memoized` have no common base, so mypy's join is `object`. Making `Memoized` an
+`Element` would fix the join, but then `Memoized[str]` would be accepted as a child too. That
 loses exactly the error we want, so the annotation is the right fix.
 
 **Conclusion.** The model type-checks without `Any`. Variance is not a problem, because `Callable`
-and a covariant `Computed` both propagate subtypes. The only friction is unannotated mixed lists,
+and a covariant `Memoized` both propagate subtypes. The only friction is unannotated mixed lists,
 which need a `list[pa.Child]` annotation. That should be documented. `Child` and `InputBase` must
 therefore be public names.
 
 **Design consequence: no bare callables as children.** A first version of the sketch also
-accepted `Child = Element | Computed[Element] | Callable[[], Element]` (bare lambdas and `def`s).
+accepted `Child = Element | Memoized[Element] | Callable[[], Element]` (bare lambdas and `def`s).
 That type-checks equally well, positive and negative: `Callable` is covariant in its return type,
 so heterogeneous lambdas pass and lambdas returning non-elements fail. Semantically, though, a lambda created inside
 `view` is a new object on every `view` run. picoapp can neither cache it nor give it a stable slot.
-So only `Computed` nodes should be accepted, and a lambda is wrapped explicitly with
-`pa.computed(lambda: ...)`, at a place where it is created once.
+So only `Memoized` nodes should be accepted, and a lambda is wrapped explicitly with
+`pa.memoize(lambda: ...)`, at a place where it is created once.
 
 ## Deferred follow-up ideas
 
@@ -688,7 +700,7 @@ outputs `foo` and `bar`: there is no obvious way to weigh them, and a 50/50 spli
 With nodes, progress becomes per node:
 
 ```py
-@pa.computed
+@pa.memoize
 def foo(progress: pa.Progress) -> pa.Plot:
     for i, chunk in enumerate(chunks):
         progress(i / len(chunks), f"chunk {i}")    # fraction + optional message
@@ -696,7 +708,7 @@ def foo(progress: pa.Progress) -> pa.Plot:
 ```
 
 - **Feasibility.**
-  - `pa.computed` can accept both `Callable[[], T]` and `Callable[[pa.Progress], T]` via two
+  - `pa.memoize` can accept both `Callable[[], T]` and `Callable[[pa.Progress], T]` via two
     overloads, which stay typed.
   - picoapp detects whether the function takes `progress` (arity) and passes the reporter.
   - A `progress(...)` call runs on the worker thread with the GIL held. It only enqueues a
@@ -720,7 +732,7 @@ def foo(progress: pa.Progress) -> pa.Plot:
 2. ~~Ship only level 0 first?~~ No, see 1.
 3. ~~Automatic tracking vs. explicit dependencies?~~ Automatic (see "Does the graph have to be
    static?").
-4. ~~Node API shape?~~ A single `pa.computed` returning arbitrary values (see "Nodes return
+4. ~~Node API shape?~~ A single `pa.memoize` returning arbitrary values (see "Nodes return
    arbitrary values"). Both `.map` projections and nodes returning a `View` subtree are
    supported.
 5. ~~Fragments in the first spec?~~ Yes (see "Nodes returning view subtrees").
@@ -728,4 +740,4 @@ def foo(progress: pa.Progress) -> pa.Plot:
    prepared forms of slots that leave the view (see "Memory policy for hidden nodes").
 7. ~~Layout vocabulary and sizing?~~ As proposed in "Layout": `Row`/`Column`, compact/fill
    sizing, no sizing API yet.
-8. Naming of `computed`/`Computed[T]` (see "Naming"; recommendation `derived`/`Derived[T]`).
+8. ~~Naming?~~ `@pa.memoize` / `pa.Memoized[T]` (see "Naming").

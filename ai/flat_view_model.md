@@ -14,7 +14,7 @@ returns a full view, built from hoisted inputs and outputs. Prior art lives in
   Deferred to follow-up specs: input writes/presets with a re-run cap, `Button`, `Tabs`, fragments.
 - **Status: paused, likely superseded.** The alternative reactive model
   (`ai/alternative_reactive_model.md`) contains this model as a special case: a `view` that builds
-  all outputs inline. The current direction is to ship that model with `@pa.computed` nodes, see
+  all outputs inline. The current direction is to ship that model with `@pa.memoize` nodes, see
   its "Decision: go straight for level 1". The scope items above carry over, except `has_changed`
   (replaced by tracking and handlers) and identity-based output reuse (replaced by per-node
   versions). The analysis in this file stays as the rationale.

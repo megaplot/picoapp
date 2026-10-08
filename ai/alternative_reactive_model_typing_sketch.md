@@ -12,7 +12,8 @@ tcvenv/bin/mypy --strict sketch.py
 echo '{"typeCheckingMode":"strict"}' > pyrightconfig.json && tcvenv/bin/pyright sketch.py
 ```
 
-Result with mypy 2.4.0 and pyright 1.1.414: every `# E` line errors in both. Besides those, there
+Result with mypy 2.4.0 (`--strict` plus the repo's `mypy.ini` flags, e.g.
+`disallow_any_decorated`) and pyright 1.1.414: every `# E` line errors in both. Besides those, there
 are exactly two errors: mypy on `Row(*mixed)` (an unannotated input + node list joins to
 `object`) and pyright on `inputs.append(int_slider)` (the list is inferred as the union of its
 initial element types). Both go away with a `list[Child]` annotation; see the main doc.
@@ -84,7 +85,7 @@ class Radio(Input[T]):
         super().__init__(values[0])
 
 
-class Computed(Generic[T_co]):
+class Memoized(Generic[T_co]):
     def __init__(self, fn: Callable[[], T_co]) -> None:
         self._fn = fn
 
@@ -92,12 +93,12 @@ class Computed(Generic[T_co]):
         return self._fn()
 
 
-def computed(fn: Callable[[], T]) -> Computed[T]:
-    return Computed(fn)
+def memoize(fn: Callable[[], T]) -> Memoized[T]:
+    return Memoized(fn)
 
 
 # What a view slot accepts: a plain element or a node producing an element.
-Child = Element | Computed[Element]
+Child = Element | Memoized[Element]
 
 
 class Layout(Element):
@@ -122,17 +123,17 @@ radio = Radio(["a", "b"])
 radio_value: str = radio.value
 
 
-@computed
+@memoize
 def plot_node() -> Plot:
     return Plot()
 
 
-@computed
+@memoize
 def audio_node() -> Audio:
     return Audio()
 
 
-@computed
+@memoize
 def dataset() -> list[float]:  # general memoization: non-element value
     return [slider.value]
 
@@ -148,14 +149,14 @@ Row(
     Plot(),
     plot_node,
     audio_node,
-    computed(lambda: Plot()),
-    computed(lambda: Audio()),
-    computed(plot_fn),
-    Column(checkbox, computed(lambda: Row(plot_node))),
+    memoize(lambda: Plot()),
+    memoize(lambda: Audio()),
+    memoize(plot_fn),
+    Column(checkbox, memoize(lambda: Row(plot_node))),
 )
 
 # Heterogeneous list literals, unpacked.
-node_list = [computed(lambda: Plot()), computed(lambda: Audio())]
+node_list = [memoize(lambda: Plot()), memoize(lambda: Audio())]
 Row(*node_list)
 
 nodes = [plot_node, audio_node]
@@ -168,7 +169,7 @@ Column(*inputs)
 mixed = [slider, plot_node]
 Row(*mixed)
 
-mixed_annotated: list[Child] = [slider, plot_node, computed(lambda: Audio())]
+mixed_annotated: list[Child] = [slider, plot_node, memoize(lambda: Audio())]
 mixed_annotated.append(Plot())
 Row(*mixed_annotated)
 
@@ -176,17 +177,17 @@ node_dict = {"plot": plot_node, "audio": audio_node}
 Row(*node_dict.values())
 
 Row(plot_node if checkbox.value else audio_node)
-Row(*(computed(lambda: Plot()) for _ in range(3)))
+Row(*(memoize(lambda: Plot()) for _ in range(3)))
 
-# Variance: a Computed[Plot] is a Computed[Output].
-as_output: Computed[Output] = plot_node
+# Variance: a Memoized[Plot] is a Memoized[Output].
+as_output: Memoized[Output] = plot_node
 
 # --- user code: negative cases ---------------------------------------------------
 
 Row(42)  # E
 Row(lambda: Plot())  # E
 Row(dataset)  # E
-Row(computed(lambda: "text"))  # E
+Row(memoize(lambda: "text"))  # E
 
 
 def int_fn() -> int:

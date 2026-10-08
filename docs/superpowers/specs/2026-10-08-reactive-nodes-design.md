@@ -4,7 +4,7 @@ Replaces picoapp's nested `Inputs`/`Outputs`/`Reactive` model with:
 
 - hoisted inputs,
 - a `view` function that arranges inputs and outputs into a layout,
-- fine-grained `@pa.computed` nodes with automatic dependency tracking.
+- fine-grained `@pa.memoize` nodes with automatic dependency tracking.
 
 This is a breaking change; the old API is removed.
 
@@ -60,10 +60,10 @@ pa.Row(*children: pa.Child)
 pa.Column(*children: pa.Child)
 
 # Nodes.
-@pa.computed
-def f() -> T: ...                    # f: pa.Computed[T]; also usable as pa.computed(fn)
+@pa.memoize
+def f() -> T: ...                    # f: pa.Memoized[T]; also usable as pa.memoize(fn)
 f()                                  # value of the node (computed or cached), tracked
-f.map(g)                             # pa.Computed[U] for g: Callable[[T], U]
+f.map(g)                             # pa.Memoized[U] for g: Callable[[T], U]
 
 pa.run(view)                         # view: Callable[[], pa.Element]
 
@@ -78,14 +78,14 @@ pa.CycleError                        # raised when a node (transitively) calls i
     - `Input(InputBase, Generic[T_co])` with `value: T_co`. Covariant, which mypy's list joins
       need (see the typing sketch).
   - `Layout(Element)`: `Row`, `Column`.
-- `Computed(Generic[T_co])`: callable, with `__call__() -> T_co` and `map`.
-- `Child = Element | Computed[Element]`. Bare callables are not accepted: a lambda created inside
+- `Memoized(Generic[T_co])`: callable, with `__call__() -> T_co` and `map`.
+- `Child = Element | Memoized[Element]`. Bare callables are not accepted: a lambda created inside
   `view` would be a new object every run.
 
 `Output` and `Input` stop being union type aliases and become base classes. Existing user
 annotations like `x: pa.Output` keep working.
 
-`pa.run(view)` wraps `view` in a root node, i.e. `pa.computed(view)`. A root returning a non-layout
+`pa.run(view)` wraps `view` in a root node, i.e. `pa.memoize(view)`. A root returning a non-layout
 element is treated as a single-child `Column`.
 
 **Removed:** `Inputs`, `Outputs`, `Reactive`, `ReactiveBase`, `Callback`, and the
@@ -106,7 +106,7 @@ element is treated as a single-child `Column`.
 ### Dependency tracking
 
 - While a node evaluates, it is on top of a `contextvars`-based evaluation stack. Every
-  `Input.value` read and every `Computed.__call__` on that stack records a dependency
+  `Input.value` read and every `Memoized.__call__` on that stack records a dependency
   `(source, version_seen)` in read order. The recorded list replaces the node's previous
   dependencies after the run, so dependencies can differ per `if` branch.
 - Reads outside any evaluation (e.g. at module level) are untracked and allowed.
@@ -136,8 +136,8 @@ element is treated as a single-child `Column`.
 
 ### Slots and the view tree
 
-- A **slot** is a `Computed` placed in a layout: the root, a `Computed` child of a `Row`/`Column`,
-  or a `Computed` inside a fragment's result.
+- A **slot** is a `Memoized` placed in a layout: the root, a `Memoized` child of a `Row`/`Column`,
+  or a `Memoized` inside a fragment's result.
 - **Visible slots** are those reachable from the root through the *latest results* of slot nodes.
 - A slot whose result is a `Layout` is a **fragment**. A slot whose result is an `Output` or an
   `Input` is a leaf. Any other result type produces a slot error ("node `f` returned `int`, expected
@@ -153,7 +153,7 @@ A stateful `Engine` (pure Python, `python/picoapp/_engine.py`) runs on the worke
 
 ```py
 class Engine:
-    def __init__(self, root: Computed[Element]) -> None: ...
+    def __init__(self, root: Memoized[Element]) -> None: ...
     def set_values(self, changes: Sequence[tuple[int, object]]) -> None: ...
     def stale_visible_slots(self) -> list[int]: ...
     def step(self) -> SlotResult | None: ...
@@ -202,7 +202,7 @@ enum ViewTree {
     Column(Vec<ViewTree>),
     Input { id: InputId, spec: InputSpec },   // spec carries the *current* value
     Output(Output),                           // existing Output enum
-    Slot(NodeId),                             // a Computed child
+    Slot(NodeId),                             // a Memoized child
 }
 enum SlotContent { Tree(ViewTree), Error(String) }
 ```
