@@ -7,7 +7,9 @@ import numpy as np
 
 import picoapp as pa
 
-layout = pa.Radio("Layout", ["sidebar", "inputs above plots", "mixed column"])
+layout = pa.Radio(
+    "Layout", ["separate columns", "single column", "single column (nested)"]
+)
 sliders = [pa.Slider(f"frequency {i}", 0.1, 1.0 + i / 2, 20.0) for i in range(24)]
 
 
@@ -17,11 +19,13 @@ def plots() -> list[pa.Plot]:
 
 
 def view() -> pa.Element:
-    if layout.value == "sidebar":
+    if layout.value == "separate columns":
         return pa.Row(pa.Column(layout, *sliders), pa.Column(*plots()))
-    if layout.value == "inputs above plots":
-        return pa.Column(pa.Column(layout, *sliders), pa.Column(*plots()))
-    return pa.Column(layout, *sliders, *plots())
+    if layout.value == "single column":
+        return pa.Column(layout, *sliders, *plots())
+    # Looks the same as "single column": a column inside a column takes its
+    # content's height, and the outer column scrolls.
+    return pa.Column(pa.Column(layout, *sliders), pa.Column(*plots()))
 
 
 pa.run(view)

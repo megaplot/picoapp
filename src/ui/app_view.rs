@@ -5,12 +5,12 @@ use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedReceiver;
+use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::slider::{SliderEvent, SliderState};
 use gpui_kit::gpui::prelude::FluentBuilder;
 use gpui_kit::{
-    AnyElement, App, AppContext, Context, Div, Entity, InteractiveElement, IntoElement,
-    ParentElement, Render, RenderImage, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, Window, div, px,
+    AnyElement, App, AppContext, Context, Div, Entity, IntoElement, ParentElement, Render,
+    RenderImage, SharedString, Styled, Subscription, Window, div, px,
 };
 
 use crate::inputs::{CheckboxSpec, InputSpec, InputValue, RadioSpec, SliderSpec};
@@ -394,8 +394,8 @@ impl AppView {
                     sized(div().flex().flex_col().gap(GUTTER), fill, placement).children(children);
                 if placement.height_bounded() {
                     column
+                        .overflow_y_scrollbar()
                         .id(SharedString::from(format!("column-{path}")))
-                        .overflow_y_scroll()
                         .into_any_element()
                 } else {
                     column.into_any_element()
@@ -403,18 +403,18 @@ impl AppView {
             }
             Tree::Input { id, .. } => match self.widgets.get(id) {
                 Some(widget) => {
-                    sized(self.render_input(*id, widget, cx), false, placement).into_any_element()
+                    let input = sized(self.render_input(*id, widget, cx), false, placement);
+                    natural_height(input, placement).into_any_element()
                 }
                 None => div().into_any_element(),
             },
             Tree::Output(output) => {
                 let output = render_output(output, cx);
-                let output = if fill {
-                    output.min_h(px(MIN_FILL_HEIGHT))
+                if fill {
+                    sized(output.min_h(px(MIN_FILL_HEIGHT)), true, placement).into_any_element()
                 } else {
-                    output
-                };
-                sized(output, fill, placement).into_any_element()
+                    natural_height(sized(output, false, placement), placement).into_any_element()
+                }
             }
             Tree::Slot(node) => self.render_slot(*node, placement, cx),
         }
@@ -523,6 +523,17 @@ fn sized(el: Div, fill: bool, placement: Placement) -> Div {
         (Placement::Row, false) => el.w(SIDEBAR_WIDTH).flex_shrink_0(),
         (Placement::Column, true) => el.flex_1(),
         (Placement::Column, false) => el.flex_shrink_0(),
+    }
+}
+
+/// Keeps an input or audio player at its natural height where `sized` would
+/// stretch it: a row stretches its children to the row's height, and a slot
+/// grows its content.
+fn natural_height(el: Div, placement: Placement) -> Div {
+    match placement {
+        Placement::Row => el.self_start(),
+        Placement::SlotContent { .. } => el.flex_none(),
+        Placement::Root | Placement::Column => el,
     }
 }
 
