@@ -676,11 +676,9 @@ def foo(progress: pa.Progress) -> pa.Plot:
 3. ~~Automatic tracking vs. explicit dependencies?~~ Automatic (see "Does the graph have to be
    static?").
 4. ~~Node API shape?~~ A single `pa.computed` returning arbitrary values (see "Nodes return
-   arbitrary values"). Open sub-question: `.map` projections vs. a node returning a `View` subtree
-   (tied to question 5).
+   arbitrary values"). Both `.map` projections and nodes returning a `View` subtree are
+   supported.
 5. ~~Fragments in the first spec?~~ Yes (see "Nodes returning view subtrees").
 6. ~~Memory policy for hidden nodes?~~ Python keeps results while the node is alive; Rust drops
    prepared forms of slots that leave the view (see "Memory policy for hidden nodes").
-7. Layout vocabulary and sizing for the first spec (see "Layout"). Previously: memory policy for
-   cached results of hidden nodes: keep them while the node is alive (the
-   proposal), or evict them?
+7. Layout vocabulary and sizing for the first spec (see "Layout").
