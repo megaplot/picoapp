@@ -128,6 +128,7 @@ def main() -> None:
 
     pa.run(callback)
 ```
+
 Note that it is not even necessary to initialize all inputs statically and eagerly.
 In principle the input instances could be fully dynamic and lazily initialized, as long as the instances are e.g. put into a collection (dict, list, etc.) that lives on the outer level to hold on to the stable instances.
 
@@ -153,6 +154,8 @@ def callback() -> pa.View:
 
     return pa.View(pa.Column(active_inputs), outputs)
 ```
+
+Since `some_rarely_used_conditional_slider` is a stable instance (hoisted) its state is maintained whether the element is active or not, i.e., if it becomes active again, it would take exactly the old value it had before becoming inactive.
 
 **Caching**
 
@@ -203,12 +206,14 @@ some_button = pa.Button("Run side-effect", -10.0, 0.5, 10.0)
 
 def callback() -> pa.View:
 
-    if some_button.pressed:
+    if some_button.clicked:
         print("Running side effect...")
         run_side_effect()
 
     return pa.View(...)
 ```
+
+Or perhaps a better way to describe the programming model would be to speak of a hybrid of retained mode and immediate mode, because inputs are retained resulting from hoisting, but in terms of the in terms of the interface, it very much feels like an immediate mode UI.
 
 ## Open questions
 
@@ -216,6 +221,7 @@ def callback() -> pa.View:
   What does gpui offer in terms of "flex" like layout?
   Can we avoid tailoring our API too specifically to gpui -- in case we have to migrate away from gpui it would be nice not having to break our API again.
   How much of a flex interface should we already expose to users?
+  Immediate mode UI's are known for being limited in terms of layouting -- are these limitations a concern in our case?
 - Are there any implications in terms of caching and diffing outputs at the framework side?
   Caching may not only be a necessary optimization on the Python (client) side, but also on the Rust (ui) side.
   Think of React-like prop updates that flow into the actual UI components.
@@ -252,6 +258,11 @@ We should at least look into:
 - Immediate mode UIs like Dear Imgui and egui
 - React/Svelte/Solid etc. although their reactivity models have some fundamental difference to what we're trying to accomplish because picoapp (1) does not try to be general purpose UI, but intentionally offers only higher abstractions for specific prototype apps, and (2) the DOM target puts a much stronger emphasis on fine-grained reactivity due the the inherently required state syncing.
 - Any other UI framework I'm not familiar with, but has a different model/scope/use-case as what we're doing here?
+
+For each of them we should look into:
+- What we can learn about the questions raised above?
+- How would they handle the use case example at hand specifically?
+- Anything else we can learn or adopt from them in terms of design?
 
 The output of the prior art analysis should be written to `ai/prior_art_programming_model.md`.
 
