@@ -1,6 +1,8 @@
 from ._core import run as run
+from ._types_element import Element as Element
 from ._types_inputs import Checkbox as Checkbox
 from ._types_inputs import Input as Input
+from ._types_inputs import InputBase as InputBase
 from ._types_inputs import Inputs as Inputs
 from ._types_inputs import IntSlider as IntSlider
 from ._types_inputs import Radio as Radio

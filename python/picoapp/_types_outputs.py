@@ -5,10 +5,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ._types_element import Element
+
 Data = np.ndarray | Sequence[float]
 
 
-class Plot:
+class Output(Element):
+    """Base of all outputs."""
+
+
+class Plot(Output):
     def __init__(
         self,
         xs: Data,
@@ -48,7 +54,7 @@ class Plot:
             )
 
 
-class MatrixPlot:
+class MatrixPlot(Output):
     def __init__(self, matrix: np.ndarray):
         if matrix.ndim != 2:
             raise ValueError(
@@ -71,13 +77,13 @@ def _use_or_infer(
 
 
 @dataclass
-class Audio:
+class Audio(Output):
     data: np.ndarray
     sr: int
 
 
 @dataclass
-class Image:
+class Image(Output):
     data: np.ndarray
     width: int
     height: int
@@ -108,13 +114,6 @@ class Image:
             raise ValueError(
                 f"Image data must be of type np.uint8, but is {self.data.dtype}."
             )
-
-
-# Union type of all supported outputs (it remains to be seen if we rather want
-# to introduce a base type, and some sort of interface, but since each type
-# basically needs an explicit implementation on the Rust side, a union type
-# seems more appropriate on first glance).
-Output = Plot | MatrixPlot | Audio | Image
 
 
 class Outputs:

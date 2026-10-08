@@ -1,10 +1,57 @@
 from __future__ import annotations
 
+import weakref
 from collections.abc import Sequence
 from typing import Generic, TypeVar
 
+from . import _tracking
+from ._types_element import Element
 
-class Slider:
+T = TypeVar("T")
+T_co = TypeVar("T_co", covariant=True)
+
+# All live inputs by id, so the engine can write values the UI sends back.
+_inputs_by_id: weakref.WeakValueDictionary[int, InputBase] = (
+    weakref.WeakValueDictionary()
+)
+
+
+class InputBase(Element):
+    """Non-generic base of all inputs, e.g. for `list[pa.InputBase]`."""
+
+    def __init__(self) -> None:
+        self._id = _tracking.next_id()
+        self._version = 0
+        _inputs_by_id[self._id] = self
+
+    def _write_ui_value(self, raw: object) -> None:
+        """Writes a value sent by the UI; bumps the version if it differs."""
+        raise NotImplementedError()
+
+
+class Input(InputBase, Generic[T_co]):
+    def __init__(self, value: T_co) -> None:
+        super().__init__()
+        self._value = value
+
+    @property
+    def value(self) -> T_co:
+        _tracking.record_read(self)
+        return self._value
+
+    def _write_ui_value(self, raw: object) -> None:
+        value = self._decode(raw)
+        if value != self._value:
+            self._value = value
+            self._version += 1
+            _tracking.bump_epoch()
+
+    def _decode(self, raw: object) -> T_co:
+        """Converts the UI's raw value (float, int, bool or index) to `T_co`."""
+        raise NotImplementedError()
+
+
+class Slider(Input[float]):
     def __init__(
         self,
         name: str,
@@ -20,14 +67,13 @@ class Slider:
             raise ValueError(
                 f"For a logarithmic slider, {min=}/{init=}/{max=} must be positive."
             )
+        super().__init__(init)
         self._name = name
         self._min = min
-        self._init = init
+        self._init = init  # read by the old Rust extractor (removed in Task 4)
         self._max = max
         self._log = log
         self._decimal_places = decimal_places
-
-        self._value = init
 
     @property
     def name(self) -> str:
@@ -38,24 +84,24 @@ class Slider:
         return self._min
 
     @property
-    def value(self) -> float:
-        return self._value
-
-    @property
     def max(self) -> float:
         return self._max
 
+    def _decode(self, raw: object) -> float:
+        if not isinstance(raw, (int, float)):
+            raise TypeError(f"Slider value must be a number, got {raw!r}")
+        return float(raw)
 
-class IntSlider:
+
+class IntSlider(Input[int]):
     def __init__(self, name: str, min: int, init: int, max: int) -> None:
         if not (min <= init <= max):
             raise ValueError(f"Slider {min=}/{init=}/{max=} must be monotonous.")
+        super().__init__(init)
         self._name = name
         self._min = min
-        self._init = init
+        self._init = init  # read by the old Rust extractor (removed in Task 4)
         self._max = max
-
-        self._value = init
 
     @property
     def name(self) -> str:
@@ -66,51 +112,49 @@ class IntSlider:
         return self._min
 
     @property
-    def value(self) -> int:
-        return self._value
-
-    @property
     def max(self) -> int:
         return self._max
 
+    def _decode(self, raw: object) -> int:
+        if not isinstance(raw, int):
+            raise TypeError(f"IntSlider value must be an int, got {raw!r}")
+        return raw
 
-class Checkbox:
+
+class Checkbox(Input[bool]):
     def __init__(self, name: str, init: bool = False) -> None:
+        super().__init__(init)
         self._name = name
-        self._init = init
-
-        self._value = init
-
-    @property
-    def value(self) -> bool:
-        return self._value
+        self._init = init  # read by the old Rust extractor (removed in Task 4)
 
     def __bool__(self) -> bool:
-        return self._value
+        return self.value
+
+    def _decode(self, raw: object) -> bool:
+        if not isinstance(raw, bool):
+            raise TypeError(f"Checkbox value must be a bool, got {raw!r}")
+        return raw
 
 
-T = TypeVar("T")
-
-
-class Radio(Generic[T]):
+class Radio(Input[T]):
     def __init__(self, name: str, values: Sequence[T], init: T | None = None) -> None:
         if len(values) == 0:
             raise ValueError("Radio values must not be empty")
+        index = 0 if init is None else values.index(init)
+        super().__init__(values[index])
         self._name = name
         self._values = values
-        if init is None:
-            self._init_index = 0
-        else:
-            self._init_index = values.index(init)
+        self._init_index = index  # read by the old Rust extractor (removed in Task 4)
+        self._index = index
 
-        self._value = values[self._init_index]
+    def _write_ui_value(self, raw: object) -> None:
+        super()._write_ui_value(raw)
+        self._index = self._values.index(self._value)
 
-    @property
-    def value(self) -> T:
-        return self._value
-
-
-Input = Slider | IntSlider | Checkbox | Radio[T]
+    def _decode(self, raw: object) -> T:
+        if not isinstance(raw, int):
+            raise TypeError(f"Radio value must be an index, got {raw!r}")
+        return self._values[raw]
 
 
 class Inputs:
