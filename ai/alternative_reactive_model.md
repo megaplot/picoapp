@@ -82,7 +82,15 @@ right away. `clustering` re-runs afterwards, because it reads `kmeans_init` too.
   receives the values. The graph becomes static, and conditional dependencies have to be
   over-approximated (an inactive branch's slider would trigger recomputes). It is also not
   type-safe for variadic inputs: Python has no `Map[Input, T]` over a `TypeVarTuple`, so it would
-  need N overloads. **Recommendation: automatic tracking.**
+  need N overloads.
+- **Decision: automatic tracking.**
+  - It is more convenient in the standard cases.
+  - It is arguably more correct. Hand-maintained dependency lists go wrong easily: React needs a
+    dedicated lint rule (`react-hooks/exhaustive-deps`) for its `useEffect`/`useMemo` lists, and
+    picoapp could not offer such tooling.
+  - Explicit lists would not help with external dependencies either (files, RNG state,
+    non-deterministic algorithms), because those cannot be listed as inputs. They are handled by
+    an explicit refresh instead, see "Deferred follow-up ideas".
 
 ### "Unbounded" inputs and outputs: create them lazily
 
@@ -116,6 +124,41 @@ Nothing has to be created eagerly for the worst case.
     selector, switching back recomputes. Users choose the granularity.
 - Equality: a recomputed node always counts as changed. Comparing large arrays is too expensive,
   consistent with the prior art doc's DIFF section. An optional `eq=` could be added later.
+
+### Diamond dependencies and glitches
+
+The setup: `B` and `C` both read input `A`, and `D` reads `B` and `C`. In a *push*-based system
+(each change eagerly propagates to dependents), changing `A` can recompute `D` twice, or once with
+a new `B` and an old `C`. That intermediate result is a "glitch".
+
+This model is not affected, because it **marks stale by push, but evaluates by pull**:
+
+1. A change bumps `A`'s version. Nothing is recomputed yet.
+2. When the round reaches `D`, picoapp first brings `D`'s computed dependencies up to date. It
+   walks them recursively and recomputes `B` and `C` if they are stale.
+3. Only then does it compare versions and re-run `D`, once, with consistent `B` and `C`.
+
+This is the scheme of Solid, Preact signals and the TC39 signals proposal. Two details matter.
+
+**Check dependencies in recorded order, and stop at the first change.** Take
+`D = x() if a.value else y()`, which last read `a` and then `x`. If `a` changed, `D` is re-run
+right away. `x` is never brought up to date, even if it is stale too, because the new run may not
+read it at all. Checking all recorded dependencies first would compute nodes that the new branch no
+longer needs.
+
+**Consistency within a round and across outputs.**
+
+- Only the worker writes input values, and only between node evaluations. So every node evaluation
+  sees one consistent snapshot of the inputs. This is a benefit of the single worker thread.
+- What a round does when new input events arrive while it runs is still open (see "Architecture
+  sketch", step 5). Option A applies the events right away and re-plans. Option B finishes the
+  round on the old snapshot.
+  - With option A, different outputs on screen can briefly reflect different input snapshots. One
+    output is already updated while another is still being recomputed. That is a "glitch" across
+    sinks rather than within one node, and it is visible to the user.
+  - It is made honest by dimming every output that is stale or currently recomputing.
+  - The recommendation is option A, for responsiveness. Option B keeps outputs mutually consistent
+    but delays reacting to the newest input by up to a whole round.
 
 ### `has_changed` and `button.clicked`
 
@@ -465,12 +508,65 @@ so heterogeneous lambdas pass and lambdas returning non-elements fail. Semantica
 So only `Computed` nodes should be accepted, and a lambda is wrapped explicitly with
 `pa.computed(lambda: ...)`, at a place where it is created once.
 
+## Deferred follow-up ideas
+
+Recorded here so they are not lost. They are not part of the first spec, but its design should not
+make them hard to add.
+
+### Manual refresh
+
+There are results the tracking cannot see as stale: external sources (files on disk, a database)
+and non-deterministic computations (RNG-based algorithms) where re-running is meaningful. The user
+of the app knows when that is the case, so the natural mechanism is an explicit **refresh**:
+
+- **App-level:** once `Button` exists, an app can implement it itself. Nodes read `refresh.clicks`
+  as a tracked dependency, so a click invalidates them.
+- **Framework-level:** a standard refresh control, e.g. in a future status bar. It would invalidate
+  all nodes, or let the user pick one ("re-run this output"), e.g. from a context menu on an output
+  slot.
+
+Placing such a control today would be awkward, because there is no status bar or slot chrome yet.
+
+### Progress reporting for slow nodes
+
+For nodes that take minutes or hours, a busy dim is not enough UX. The old plan was a single
+`progress` callback for the whole callback. That has no clear meaning when one run recomputes two
+outputs `foo` and `bar`: there is no obvious way to weigh them, and a 50/50 split is arbitrary.
+With nodes, progress becomes per node:
+
+```py
+@pa.computed
+def foo(progress: pa.Progress) -> pa.Plot:
+    for i, chunk in enumerate(chunks):
+        progress(i / len(chunks), f"chunk {i}")    # fraction + optional message
+        ...
+```
+
+- **Feasibility.**
+  - `pa.computed` can accept both `Callable[[], T]` and `Callable[[pa.Progress], T]` via two
+    overloads, which stay typed.
+  - picoapp detects whether the function takes `progress` (arity) and passes the reporter.
+  - A `progress(...)` call runs on the worker thread with the GIL held. It only enqueues a
+    (throttled) message to the UI, which is cheap.
+- **UI.**
+  - Each output slot shows its own progress bar and ETA.
+  - A global indicator shows "N outputs updating".
+  - This is more honest than a single synthetic percentage. Usually only one node is slow, and
+    that is the one that reports progress.
+- **Possible bonus: cooperative cancellation.** If the node's result became obsolete, because its
+  inputs changed again or it left the view, the `progress(...)` call can raise a picoapp-internal
+  exception that aborts the evaluation. Slow nodes then stop wasting time on stale work. Python
+  cannot interrupt a running callback otherwise.
+- **Open:** whether non-output value nodes (like `dataset` in the sketch) report progress, and
+  where it would be shown, e.g. on every visible output that waits for them.
+
 ## Open questions
 
 1. ~~One design with levels 0 and 1, or two competing designs?~~ One design; ship level 1
    (see "The flat model is a special case").
 2. ~~Ship only level 0 first?~~ No, see 1.
-3. Automatic tracking vs. explicit dependencies (recommendation: automatic).
+3. ~~Automatic tracking vs. explicit dependencies?~~ Automatic (see "Does the graph have to be
+   static?").
 4. Node API shape: a decorator (`@pa.computed`) vs. output-specific constructors
    (`pa.Plot.computed(fn)`). Do nodes have to return `Output`s, or can they also return arbitrary
    values (like `dataset` above), i.e. general memoization?
