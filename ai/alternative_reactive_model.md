@@ -47,7 +47,7 @@ def clustering() -> pa.Plot:
         labels = dbscan(data, dbscan_eps.value)
     return pa.Plot(...)
 
-def view() -> pa.View:                 # cheap: reads selectors, arranges objects
+def view() -> pa.Element:                 # cheap: reads selectors, arranges objects
     ds_params = [blobs_n] if ds_select.value == "blobs" else [moons_noise]
     if algo_select.value == "kmeans":
         algo_params = [kmeans_k, kmeans_init]
@@ -162,14 +162,14 @@ def sound() -> Sound: ...
    ```py
    sound_audio = sound.map(lambda s: s.audio)          # Memoized[pa.Audio]
    sound_waveform = sound.map(lambda s: s.waveform)    # Memoized[pa.Plot]
-   def view() -> pa.View:
+   def view() -> pa.Element:
        return pa.Row(controls, pa.Column(sound_audio, sound_waveform))
    ```
    `view` stays cheap, each part gets its own slot, and the typing is exact because `.map` is a
    plain generic method. A tuple-splitting helper (`a, b, c = pa.split(sound)`) is not expressible
    generically for any arity, since Python typing has no `Map` over a `TypeVarTuple`. It would need
    one overload per arity.
-3. **The node returns a `View` subtree:** `sound` returns `pa.Column(audio, waveform, spectrum)`
+3. **The node returns a view subtree:** `sound` returns `pa.Column(audio, waveform, spectrum)`
    and is placed as one slot. This is a fragment (open question 5). It is the least boilerplate when
    the parts sit together anyway, but it moves layout into the node.
 
@@ -273,7 +273,7 @@ longer needs.
 | Latency of revealed inputs | after the whole callback | after `view` (cheap); outputs arrive one by one |
 | Output stability (audio, big plots) | user hoists or `lru_cache`s outputs | default |
 | Tabs | callback computes the active tab | `view` references the active tab's nodes; hidden ones are not evaluated, and their results are kept |
-| Fragments | additive extension | subsumed: a node returning a `View` subtree is a fragment |
+| Fragments | additive extension | subsumed: a node returning a view subtree is a fragment |
 | Errors | keep the last view | per node: an error card at that node's slot with its last value kept; `view` error → keep the last view |
 | DIFF on the Rust side | identity of output objects | per-node result versions; the UI rebuilds a slot only when its node's version changes |
 | Coalescing | one run in flight, latest values | between node evaluations, re-plan: skip nodes that became stale or unreferenced |
@@ -367,6 +367,34 @@ is a layout (`Row`/`Column`), which may contain inputs, outputs and further memo
 not the same as a "memoized output". A memoized node returning a single `Plot` is a *leaf slot*,
 and one returning a non-element value (`dataset`) is a *value node*.
 
+### Naming of the `Child` alias
+
+`pa.View` from the early sketches does not exist. `view` returns a plain element
+(`def view() -> pa.Element`, or the concrete `-> pa.Row`). It returns no `Memoized`, because `pa.run`
+already wraps `view` in the root node. The alias `Element | Memoized[Element]` is what `Row`/`Column`
+accept, and what a user writes for an unannotated mixed list (`list[pa.Child]`).
+
+Problems with `Child`: the name says where the value goes (into a layout), not what it is ("an
+element, or a node producing one"). It also doesn't match `view`'s return type.
+
+| Name | Pro | Con |
+|---|---|---|
+| `Child` (current) | Short; matches the parameter name `*children`. | Positional, not descriptive. Unrelated to `view`'s return type. |
+| `ElementLike` | Follows the Python convention for "X or something that resolves to X" (`numpy.typing.ArrayLike`, `os.PathLike`). Shows the relation to `Element` directly. | Longer. `os.PathLike` is a protocol, `ArrayLike` a union, so "-Like" isn't one exact mechanism. |
+| `Viewable` | Panel precedent (`panel.viewable.Viewable`). Relates to `view`. | In Panel it's a base class of all components, not "maybe lazy". Adjective, reads oddly as a type in `list[pa.Viewable]`. |
+| `View` | Matches `def view()`. | Suggests the whole view, not one part of it. A node returning a `Row` would be a "`View` inside a `View`". |
+| `MaybeMemoized[Element]` | Exact. | Generic noise for a single use. Only `Element` is ever used as argument. |
+| `Placeable` / `Renderable` | Describe the capability. | Generic, no relation to the class names. |
+
+Making the alias unnecessary is not an option: `Memoized[T]` can't be an `Element` only for
+`T <: Element` (no conditional base classes), and making every `Memoized` an `Element` loses the
+`Row(dataset)` error (see "Type checking", footnote ³).
+
+Recommendation: **`ElementLike`**. It reads as "anything that becomes an element", which is
+exactly the semantics. `view` keeps returning `pa.Element`, so the pair `Element`/`ElementLike`
+explains itself: layouts accept the `-Like` form, `view` produces the plain form. `Viewable` is the
+second choice.
+
 ## Layout
 
 **Decision** (as proposed) for the first spec. It aims at reproducing today's look by default, without a sizing API.
@@ -439,7 +467,7 @@ slider_b = pa.Slider("b", -10.0, 0.5, 10.0)
 slider_c = pa.Slider("c", -10.0, 0.5, 10.0)
 negate = pa.Checkbox("Negate")
 
-def view() -> pa.View:
+def view() -> pa.Element:
     xs = np.linspace(-10.0, 10.0, 100)
     ys = slider_a.value * xs**2 + slider_b.value * xs + slider_c.value
     if negate.value:
@@ -460,7 +488,7 @@ def plot() -> pa.Plot:
     ...  # the same computation
     return pa.Plot(xs, ys, x_limits=(-10, +10), y_limits=(-10, +10))
 
-def view() -> pa.View:
+def view() -> pa.Element:
     return pa.Row(pa.Column(slider_a, slider_b, slider_c, negate), plot)
 ```
 
@@ -487,7 +515,7 @@ def plot() -> pa.Plot:
 def audio() -> pa.Audio:
     return pa.Audio(sine(), sr=_SAMPLE_RATE)
 
-def view() -> pa.View:
+def view() -> pa.Element:
     return pa.Row(pa.Column(slider_freq, slider_zoom), pa.Column(plot, audio))
 ```
 
@@ -526,7 +554,7 @@ conv_plots = [
     for f in (np.real, np.imag, np.abs)
 ]
 
-def view() -> pa.View:
+def view() -> pa.Element:
     return pa.Row(
         pa.Column(slider_wavelen_signal, slider_repeat_signal, slider_wavelen_filter,
                   slider_repeat_filter, radio_window, radio_complex_mode),
@@ -560,7 +588,7 @@ def plot() -> pa.Plot:
     ys = sum(coefficients[k].value * xs**k for k in range(master.value + 1))
     return pa.Plot(xs, ys, y_limits=(-10, +10))
 
-def view() -> pa.View:
+def view() -> pa.Element:
     return pa.Row(pa.Column(master, *coefficients[: master.value + 1]), plot)
 ```
 
@@ -581,7 +609,7 @@ class App:
     def _plot(self) -> pa.Plot:
         ...
 
-    def __call__(self) -> pa.View:
+    def __call__(self) -> pa.Element:
         return pa.Row(pa.Column(self.master, *self.coefficients[: self.master.value + 1]),
                       self.plot)
 
@@ -733,7 +761,7 @@ def foo(progress: pa.Progress) -> pa.Plot:
 3. ~~Automatic tracking vs. explicit dependencies?~~ Automatic (see "Does the graph have to be
    static?").
 4. ~~Node API shape?~~ A single `pa.memoize` returning arbitrary values (see "Nodes return
-   arbitrary values"). Both `.map` projections and nodes returning a `View` subtree are
+   arbitrary values"). Both `.map` projections and nodes returning a view subtree are
    supported.
 5. ~~Fragments in the first spec?~~ Yes (see "Nodes returning view subtrees").
 6. ~~Memory policy for hidden nodes?~~ Python keeps results while the node is alive; Rust drops
@@ -741,3 +769,5 @@ def foo(progress: pa.Progress) -> pa.Plot:
 7. ~~Layout vocabulary and sizing?~~ As proposed in "Layout": `Row`/`Column`, compact/fill
    sizing, no sizing API yet.
 8. ~~Naming?~~ `@pa.memoize` / `pa.Memoized[T]` (see "Naming").
+9. Name of the `Element | Memoized[Element]` alias? Open: `Child` vs. `ElementLike` (recommended)
+   vs. `Viewable` (see "Naming of the `Child` alias").
