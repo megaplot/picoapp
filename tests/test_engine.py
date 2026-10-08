@@ -215,6 +215,23 @@ def test_reject_restores_the_previous_content() -> None:
     assert result is not None and result.node_id == fragment._id
     engine.reject(fragment._id)
     assert inner._id in [node._id for node in engine._visible().slots]
+    # The UI never dropped `inner`, so nothing must be re-sent.
+    assert engine.stale_visible_slots() == []
+
+
+def test_input_moving_to_an_earlier_slot_is_not_a_lasting_duplicate() -> None:
+    flag = pa.Checkbox("flag")
+    s = pa.Slider("s", 0.0, 0.5, 1.0)
+    first = pa.memoize(lambda: pa.Column(s) if flag.value else pa.Column())
+    second = pa.memoize(lambda: pa.Column() if flag.value else pa.Column(s))
+    engine = make_engine(pa.memoize(lambda: pa.Row(flag, first, second)))
+
+    engine.set_values([(flag._id, True)])
+    results = drain(engine)
+    # `first` may briefly see `s` still in `second`, but must end up showing it.
+    assert results[-1].node_id == first._id
+    assert isinstance(results[-1].content, pa.Column)
+    assert engine.stale_visible_slots() == []
 
 
 def test_set_values_ignores_collected_inputs() -> None:

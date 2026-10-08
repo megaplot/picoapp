@@ -218,3 +218,25 @@ def test_cycle_raises_cycle_error() -> None:
 
     with pytest.raises(pa.CycleError):
         a()
+
+
+def test_cycle_in_a_new_branch_does_not_reenter_evaluating_nodes() -> None:
+    counter = Counter()
+    cond = pa.Checkbox("cond", init=True)
+
+    @pa.memoize
+    def a() -> int:
+        counter.hit("a")
+        return b() * (1 if cond.value else 0)
+
+    @pa.memoize
+    def b() -> int:
+        counter.hit("b")
+        return 5 if cond.value else a()
+
+    assert a() == 5
+    cond._write_ui_value(False)
+    with pytest.raises(pa.CycleError):
+        b()
+    assert counter.counts["a"] <= 2
+    assert counter.counts["b"] <= 2

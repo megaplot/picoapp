@@ -34,6 +34,15 @@ class _Visible(NamedTuple):
     placed: dict[int, list[int]]
 
 
+class _Undo(NamedTuple):
+    """The state before a step, so `reject` can restore it."""
+
+    node_id: int
+    shown: dict[int, Element]
+    sent: dict[int, int]
+    waiting: dict[int, tuple[int, Element | None]]
+
+
 class Engine:
     def __init__(self, root: Memoized[Element]) -> None:
         self._root = root
@@ -41,8 +50,12 @@ class Engine:
         self._shown: dict[int, Element] = {}
         # Node version of the last result sent per visible slot.
         self._sent: dict[int, int] = {}
-        # Content of the last step, so `reject` can restore it.
-        self._last_step: tuple[int, Element | None] | None = None
+        # Slots whose last result was a duplicate error caused by another
+        # slot, with that slot's shown content at the time. The other slot
+        # may just be moving the item away, so the check is repeated once its
+        # content changes.
+        self._waiting: dict[int, tuple[int, Element | None]] = {}
+        self._last_step: _Undo | None = None
 
     @property
     def root_id(self) -> int:
@@ -72,9 +85,12 @@ class Engine:
             self._last_step = None
             return None
         node._ensure_fresh()
+        self._last_step = _Undo(
+            node._id, dict(self._shown), dict(self._sent), dict(self._waiting)
+        )
+        self._waiting.pop(node._id, None)
         content = self._slot_content(node)
         self._sent[node._id] = node._version
-        self._last_step = (node._id, self._shown.get(node._id))
         if isinstance(content, Element):
             self._shown[node._id] = content
         self._prune()
@@ -83,19 +99,23 @@ class Engine:
     def reject(self, node_id: int) -> None:
         """Called when the UI could not display the last step's content.
 
-        Restores the slot's previous content, which the UI keeps showing.
+        Restores the state before that step: the UI keeps showing the slot's
+        previous content, and with it the slots inside. The slot itself counts
+        as sent, so the unparsable content isn't sent again.
         """
-        if self._last_step is None or self._last_step[0] != node_id:
+        undo = self._last_step
+        if undo is None or undo.node_id != node_id:
             return
-        previous = self._last_step[1]
-        if previous is None:
-            self._shown.pop(node_id, None)
-        else:
-            self._shown[node_id] = previous
-        self._prune()
+        sent_version = self._sent[node_id]
+        self._shown, self._sent, self._waiting = undo.shown, undo.sent, undo.waiting
+        self._sent[node_id] = sent_version
+        self._last_step = None
 
     def _needs_step(self, node: Memoized[object]) -> bool:
-        return node._maybe_stale() or self._sent.get(node._id) != node._version
+        if node._maybe_stale() or self._sent.get(node._id) != node._version:
+            return True
+        waiting = self._waiting.get(node._id)
+        return waiting is not None and self._shown.get(waiting[0]) is not waiting[1]
 
     def _next_slot(self) -> Memoized[object] | None:
         """Priority: the root, then fragments, then leaves, each in tree order."""
@@ -122,23 +142,30 @@ class Engine:
             )
         duplicate = self._find_duplicate(node, value)
         if duplicate is not None:
-            return f"{duplicate} appears more than once in the view"
+            item, other_slot = duplicate
+            if other_slot is not None:
+                self._waiting[node._id] = (other_slot, self._shown.get(other_slot))
+            return f"{item} appears more than once in the view"
         return value
 
-    def _find_duplicate(self, node: Memoized[object], content: Element) -> str | None:
+    def _find_duplicate(
+        self, node: Memoized[object], content: Element
+    ) -> tuple[str, int | None] | None:
+        """The first item placed twice, and the other slot placing it (if any)."""
         visible = self._visible()
-        taken = {
-            placed_id
+        # Placed item id -> the slot placing it (`None`: not another slot).
+        taken: dict[int, int | None] = {
+            placed_id: slot_id
             for slot_id, ids in visible.placed.items()
             if slot_id != node._id
             for placed_id in ids
         }
-        taken.add(self._root._id)
-        taken.add(node._id)
+        taken[self._root._id] = None
+        taken[node._id] = None
         for item in _placed(content):
             if item._id in taken:
-                return repr(item)
-            taken.add(item._id)
+                return repr(item), taken[item._id]
+            taken[item._id] = None
         return None
 
     def _visible(self) -> _Visible:
@@ -162,7 +189,7 @@ class Engine:
     def _prune(self) -> None:
         """Forgets slots that are no longer visible (the UI drops them too)."""
         visible_ids = {node._id for node in self._visible().slots}
-        for slot_map in (self._shown, self._sent):
+        for slot_map in (self._shown, self._sent, self._waiting):
             for slot_id in list(slot_map):
                 if slot_id not in visible_ids:
                     del slot_map[slot_id]

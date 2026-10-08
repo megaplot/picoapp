@@ -35,8 +35,6 @@ class Memoized(Generic[T_co]):
         self._checked_epoch = -1
 
     def __call__(self) -> T_co:
-        if any(frame.node is self for frame in _tracking.stack.get()):
-            raise CycleError(f"memoized node `{self._name}` calls itself")
         self._ensure_fresh()
         _tracking.record_read(self)
         return self._result()
@@ -59,6 +57,10 @@ class Memoized(Generic[T_co]):
 
     def _ensure_fresh(self) -> None:
         """Brings the node up to date (pull with ordered short-circuit)."""
+        # Checked here, not only in `__call__`: a dependency walk can reach a
+        # node that is still evaluating, which must not be re-entered.
+        if any(frame.node is self for frame in _tracking.stack.get()):
+            raise CycleError(f"memoized node `{self._name}` calls itself")
         epoch = _tracking.current_epoch()
         if self._checked_epoch == epoch:
             return

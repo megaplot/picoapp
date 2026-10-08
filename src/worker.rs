@@ -89,7 +89,10 @@ fn worker_loop(
         let Ok(first) = receiver.recv() else {
             break;
         };
-        changes = drain_pending(&receiver, vec![first]);
+        let Some(pending) = drain_pending(&receiver, vec![first]) else {
+            break;
+        };
+        changes = pending;
     }
     // Channel closed: drop the engine while attached so every Py handle is
     // released correctly.
@@ -134,7 +137,12 @@ fn run_round(
             return;
         }
 
-        changes = drain_pending(receiver, Vec::new());
+        // The UI dropped its handle (window closed): stop instead of
+        // evaluating the rest of the round for nobody.
+        let Some(pending) = drain_pending(receiver, Vec::new()) else {
+            return;
+        };
+        changes = pending;
     }
 }
 
@@ -183,14 +191,18 @@ fn step(engine: &Bound<'_, PyAny>) -> Result<Option<SlotResult>, String> {
 }
 
 /// Collects all changes already queued behind `changes`, without blocking.
+/// Returns `None` once the UI has dropped its `WorkerHandle`.
 fn drain_pending(
     receiver: &mpsc::Receiver<InputChange>,
     mut changes: Vec<InputChange>,
-) -> Vec<InputChange> {
-    while let Ok(change) = receiver.try_recv() {
-        changes.push(change);
+) -> Option<Vec<InputChange>> {
+    loop {
+        match receiver.try_recv() {
+            Ok(change) => changes.push(change),
+            Err(mpsc::TryRecvError::Empty) => return Some(coalesce(changes)),
+            Err(mpsc::TryRecvError::Disconnected) => return None,
+        }
     }
-    coalesce(changes)
 }
 
 /// Keeps the latest value per input (latest value wins, no queue), in the
@@ -266,14 +278,18 @@ engine = Engine()
         );
         let (to_ui, mut from_worker) = unbounded();
         let worker = spawn(engine, to_ui);
-        // Dropping the handle closes the change channel and joins the thread
-        // after the first round.
-        drop(worker);
 
+        // Keep the handle alive (a dropped handle ends the round early) until
+        // the round's three messages arrived.
         let mut messages = Vec::new();
-        while let Ok(message) = from_worker.try_recv() {
-            messages.push(format!("{message:?}"));
+        let start = std::time::Instant::now();
+        while messages.len() < 3 && start.elapsed() < std::time::Duration::from_secs(5) {
+            match from_worker.try_recv() {
+                Ok(message) => messages.push(format!("{message:?}")),
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(5)),
+            }
         }
+        drop(worker);
         assert_eq!(
             messages,
             vec![
@@ -344,6 +360,41 @@ engine = Engine()
                 .unwrap()
         });
         assert_eq!(rejected, vec![3]);
+    }
+
+    #[test]
+    fn round_stops_when_the_ui_drops_its_handle() {
+        let engine = python_engine(
+            c"
+class Engine:
+    def __init__(self):
+        self.steps = 0
+    def stale_visible_slots(self):
+        return [1] if self.steps < 50 else []
+    def step(self):
+        self.steps += 1
+        __import__('time').sleep(0.01)
+        return (1, self.steps, 'slow')
+engine = Engine()
+",
+        );
+        let engine_for_check = Python::attach(|py| engine.clone_ref(py));
+        // The UI's message receiver stays alive (as a gpui task's would), only
+        // the handle is dropped.
+        let (to_ui, _from_worker) = unbounded();
+        drop(spawn(engine, to_ui));
+
+        let steps: u64 = Python::attach(|py| {
+            engine_for_check
+                .getattr(py, "steps")
+                .unwrap()
+                .extract(py)
+                .unwrap()
+        });
+        assert!(
+            steps < 50,
+            "the round ran all {steps} steps after the handle was dropped"
+        );
     }
 
     /// Regression test for a deadlock: `WorkerHandle::drop` used to call
