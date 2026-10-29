@@ -18,3 +18,4 @@ Same-platform rows are the only ones directly comparable — see
 |---|---|---|---|---|
 | 2026-09-29T13:54Z | 0.3.0 | x86_64-unknown-linux-gnu | 17M | 17379730 |
 | 2026-10-08T16:45Z | 0.4.0 | x86_64-unknown-linux-gnu | 18M | 17987139 |
+| 2026-10-29T09:17Z | 0.4.1 | x86_64-unknown-linux-gnu | 17M | 17245744 |
