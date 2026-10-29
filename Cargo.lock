@@ -5112,7 +5112,7 @@ checksum = "5be167a7af36ee22fe3115051bc51f6e6c7054c9348e28deb4f49bd6f705a315"
 
 [[package]]
 name = "picoapp"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "futures",
@@ -5123,6 +5123,7 @@ dependencies = [
  "rodio",
  "smallvec",
  "tracing-subscriber",
+ "x11rb",
 ]
 
 [[package]]
@@ -9069,6 +9070,8 @@ dependencies = [
  "as-raw-xcb-connection",
  "gethostname",
  "libc",
+ "libloading",
+ "once_cell",
  "rustix",
  "x11rb-protocol",
  "xcursor",

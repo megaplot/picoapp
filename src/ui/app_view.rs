@@ -560,7 +560,7 @@ fn prepare_output(output: Output, cx: &mut Context<AppView>) -> PreparedOutput {
             let render_image = build_render_image(&data);
             PreparedOutput::Image { data, render_image }
         }
-        Output::Audio(audio) => PreparedOutput::Audio(cx.new(|_| AudioPlayer::new(audio))),
+        Output::Audio(audio) => PreparedOutput::Audio(cx.new(|cx| AudioPlayer::new(audio, cx))),
     }
 }
 

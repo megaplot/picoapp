@@ -18,7 +18,10 @@ OUT_DIR="${1:-dist}"
 
 cd "$PROJECT_ROOT"
 
-maturin build --release --out "$OUT_DIR" 1>&2
+# `--auditwheel warn`: no bundled system libraries, like deploy.yml's
+# Linux wheels (there with the manylinux_2_28 tag; here the host's glibc
+# is usually newer, so the wheel gets the plain `linux` tag).
+maturin build --release --out "$OUT_DIR" --auditwheel warn 1>&2
 
 # maturin overwrites same-version wheels in place, so a fresh OUT_DIR has
 # exactly one; sort -V so a stale, lower-versioned wheel from an older run

@@ -125,6 +125,7 @@ UI stack: [gpui-kit](https://gpui-kit.com/) (`gpui-kit = "=0.6.6"`, pinned exact
 - Despite the zero-copy goal, output data is currently *copied* across the boundary via `extract::<Vec<f64>>()`. The `rust-numpy`/buffer-protocol path is a TODO in `src/outputs.rs`.
 - `pyproject.toml` duplicates `requirements.in` because maturin does not support dynamic dependencies ([PyO3/maturin#1537](https://github.com/PyO3/maturin/issues/1537)).
 - `pa.run()` never returns on macOS: gpui's default `QuitMode` there is `Explicit`, so closing the last window doesn't end the app's `run` loop. Untested on Windows.
+- The Linux wheels are built with `--auditwheel warn` (no bundling) and link the system's `libasound`, `libxkbcommon` and `libxkbcommon-x11`: strictly outside the manylinux policy, but bundled copies broke audio device selection and printed errors. Getting back to strict compliance needs runtime loading (`dlopen`) of those libraries upstream in `alsa-sys` and gpui; `ai/notes/issues_with_linking_and_shipping.md` has the details.
 - The gpui migration roughly doubled the release wheel size vs. the cushy version (~9.5MB → ~17MB on Linux x86_64) — see `ai/wheel_size.md` for the measurement and why `strip = true` isn't a free fix.
 
 # Conventions

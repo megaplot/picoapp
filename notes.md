@@ -131,6 +131,9 @@ https://github.com/PyO3/maturin/discussions/2287
 
 ## ALSA related
 
+Runtime side (why the wheels must not bundle libasound, what static linking
+would and wouldn't solve): see `ai/notes/issues_with_linking_and_shipping.md`.
+
 The library that we need is `libasound2.so`.
 
 The corresponding package name seems to be:
