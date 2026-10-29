@@ -16,7 +16,7 @@ def outputs() -> pa.Column:
     sine = create_sine(n=_SAMPLE_RATE, freq=slider_freq.value)
     return pa.Column(
         pa.Plot(xs=np.arange(len(sine)), ys=sine),
-        pa.Audio(sine, sr=_SAMPLE_RATE),
+        pa.Audio(sine, sr=_SAMPLE_RATE, auto_play=True),
     )
 
 

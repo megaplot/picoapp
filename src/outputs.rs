@@ -24,6 +24,7 @@ pub struct MatrixPlot {
 pub struct Audio {
     pub data: Vec<f32>,
     pub sr: u32,
+    pub auto_play: bool,
 }
 
 impl Audio {
@@ -113,7 +114,12 @@ pub fn parse_output(object: &Bound<'_, PyAny>) -> PyResult<Output> {
     } else if object.get_type().name()? == "Audio" {
         let data: Vec<f32> = object.getattr("data")?.extract()?;
         let sr: u32 = object.getattr("sr")?.extract()?;
-        Ok(Output::Audio(Audio { data, sr }))
+        let auto_play: bool = object.getattr("auto_play")?.extract()?;
+        Ok(Output::Audio(Audio {
+            data,
+            sr,
+            auto_play,
+        }))
     } else if object.get_type().name()? == "Image" {
         let data: Vec<u8> = object.getattr("data")?.extract()?;
         let width: u32 = object.getattr("width")?.extract()?;

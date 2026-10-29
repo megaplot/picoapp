@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -80,6 +80,10 @@ def _use_or_infer(
 class Audio(Output):
     data: np.ndarray
     sr: int
+    # Starts playback as soon as the audio is shown, i.e. after every update.
+    # Off by default: with several audio outputs, it's unclear which one the
+    # user wants to hear.
+    auto_play: bool = field(default=False, kw_only=True)
 
 
 @dataclass

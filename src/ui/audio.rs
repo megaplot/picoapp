@@ -85,15 +85,22 @@ pub struct AudioPlayer {
 }
 
 impl AudioPlayer {
-    pub fn new(audio: Audio) -> Self {
+    pub fn new(audio: Audio, cx: &mut Context<Self>) -> Self {
         let player = with_mixer(Player::connect_new);
 
-        AudioPlayer {
+        let mut audio_player = AudioPlayer {
             audio,
             player: Arc::new(player),
             playing: false,
             progress: 0.0,
+        };
+        // A new result builds a new player (see `PreparedOutput`), so this
+        // replays the audio after every update; dropping the previous player
+        // stops its playback.
+        if audio_player.audio.auto_play {
+            audio_player.toggle(cx);
         }
+        audio_player
     }
 
     /// Polls playback position on a foreground timer instead of the old

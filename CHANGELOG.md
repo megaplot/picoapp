@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Audio plays on the system's default output device on Linux. The wheels no longer bundle libasound and libxkbcommon, which ignored the system's ALSA setup (e.g. PipeWire) and printed ALSA/xkbcommon errors. They now need the system's libasound2 and libxkbcommon-x11, which every Linux desktop has (`import picoapp` works without them, only `pa.run` needs them)
+- Added `auto_play` to `pa.Audio`, which starts playback whenever the audio updates
+
 ## 0.4.0
 
 - Replaced the `Inputs`/`Outputs`/`Reactive` API by a `view` function that arranges inputs and outputs in `pa.Row`/`pa.Column` layouts (breaking)

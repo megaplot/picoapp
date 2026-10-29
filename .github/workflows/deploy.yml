@@ -64,7 +64,13 @@ jobs:
           # than the pyo3 version supports (the likely reason this was
           # switched to an explicit list in 2024, on pyo3 0.21). Explicit also
           # means a new Python version is a deliberate, tested opt-in.
-          args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
+          # `--auditwheel warn` (not in the template): don't bundle libasound/
+          # libxkbcommon into the wheel. A bundled copy can't use the system's
+          # ALSA plugins (audio ignored the default device) or read its newer
+          # keymap data (stderr errors). The `--manylinux 2_28` the action adds
+          # for the `manylinux` input below keeps the tag and the glibc check.
+          # See `ai/notes/issues_with_linking_and_shipping.md`.
+          args: --release --out dist --auditwheel warn --interpreter python3.10 python3.11 python3.12 python3.13 python3.14 # keep in line with xref:supported-python-versions
           # Newer template disables sccache for release builds (there:
           # `!startsWith(github.ref, 'refs/tags/')`; here that would be pushes
           # to main). Not adopted for now: cache scopes already keep PR runs
